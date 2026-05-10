@@ -17,6 +17,8 @@ import { WaterView } from "@/sections/WaterView";
 import { MedsView } from "@/sections/MedsView";
 import { ExerciseView } from "@/sections/ExerciseView";
 import { EvolutionView } from "@/sections/EvolutionView";
+import { AssistantView } from "@/sections/AssistantView";
+import { Sparkles } from "lucide-react";
 
 const navItems = [
   { label: "Inicio", icon: Home },
@@ -33,6 +35,7 @@ export default function App() {
   const state = useAppState();
   useNotifications();
   const [showSplash, setShowSplash] = useState(true);
+  const [showAssistant, setShowAssistant] = useState(false);
   const [splashPhase, setSplashPhase] = useState<"in" | "out">("in");
 
   // Splash screen sequence
@@ -226,6 +229,25 @@ export default function App() {
           </AnimatePresence>
         </main>
       )}
+
+      {/* ====== AI FLOATING BUTTON ====== */}
+      {!showSplash && (
+        <button
+          onClick={() => setShowAssistant(true)}
+          className="fixed right-4 z-[55] rounded-full flex items-center justify-center active:scale-95 transition-transform"
+          style={{
+            background: "linear-gradient(135deg, #1B6B5B 0%, #2D8B7A 100%)",
+            width: 52, height: 52,
+            bottom: "calc(5rem + 16px)",
+            boxShadow: "0 4px 20px rgba(27,107,91,0.5)",
+          }}
+        >
+          <Sparkles className="w-5 h-5 text-white" />
+        </button>
+      )}
+
+      {/* ====== AI ASSISTANT PANEL ====== */}
+      <AssistantView isOpen={showAssistant} onClose={() => setShowAssistant(false)} />
 
       {/* ====== BOTTOM NAVIGATION ====== */}
       {!showSplash && (
