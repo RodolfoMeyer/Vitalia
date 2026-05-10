@@ -67,9 +67,8 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 export async function fireNotification(title: string, body: string): Promise<void> {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
 
-  const opts: NotificationOptions = { body, icon: "/favicon.ico", badge: "/favicon.ico" };
+  const opts: NotificationOptions = { body, icon: "/pwa-192x192.png", badge: "/pwa-64x64.png" };
 
-  // Service Worker path — required on Android Chrome & iOS PWA
   const reg = await getSWReg();
   if (reg) {
     try {
@@ -80,11 +79,57 @@ export async function fireNotification(title: string, body: string): Promise<voi
     }
   }
 
-  // Direct fallback — works on desktop browsers
   try {
     new Notification(title, opts);
   } catch (e) {
     console.warn("[Vitalia] Notification() failed:", e);
+  }
+}
+
+// ── Web Push subscription ─────────────────────────────────────────────────────
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const output = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) output[i] = rawData.charCodeAt(i);
+  return output;
+}
+
+async function subscribeToPush(wakeUpTime: string | null): Promise<void> {
+  const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
+  if (!vapidKey) return; // not configured yet
+
+  const reg = await getSWReg();
+  if (!reg) return;
+
+  try {
+    let sub = await reg.pushManager.getSubscription();
+
+    // Subscribe if not yet subscribed
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey).buffer as ArrayBuffer,
+      });
+    }
+
+    // Send subscription + wakeUpTime to server
+    await fetch("/api/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...sub.toJSON(),
+        wakeUpTime: wakeUpTime ?? "08:00",
+      }),
+    });
+
+    // Mark push as active so the in-app interval skips (avoids duplicates)
+    localStorage.setItem("vitalia_push_active", "1");
+  } catch (e) {
+    console.warn("[Vitalia] Push subscription failed:", e);
+    localStorage.removeItem("vitalia_push_active");
   }
 }
 
@@ -97,9 +142,11 @@ function loadCustomMeds(): CustomMedication[] {
 }
 
 // ── Catch-up: fire missed notifications from the last 30 min ─────────────────
+// (runs on app open, covers the foreground case)
 
 async function checkCatchUp(): Promise<void> {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
+  if (localStorage.getItem("vitalia_push_active")) return; // server push handles it
 
   const now      = new Date();
   const nowMins  = now.getHours() * 60 + now.getMinutes();
@@ -132,10 +179,11 @@ async function checkCatchUp(): Promise<void> {
   }
 }
 
-// ── Ongoing schedule check (every 30 s) ──────────────────────────────────────
+// ── Ongoing schedule check (every 30 s) — fallback when push not active ──────
 
 async function checkSchedule(): Promise<void> {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
+  if (localStorage.getItem("vitalia_push_active")) return; // server push handles it
 
   const currentTime = getCurrentHHMM();
   const todayISO    = getTodayISO();
@@ -171,16 +219,26 @@ async function checkSchedule(): Promise<void> {
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
-export function useNotifications(): void {
+export function useNotifications(wakeUpTime: string | null = null): void {
   useEffect(() => {
-    // Register SW + request permission, then catch up missed notifications
-    getSWReg().then(() => {
-      return requestNotificationPermission();
-    }).then(() => {
-      return checkCatchUp();
-    });
+    getSWReg()
+      .then(() => requestNotificationPermission())
+      .then((permission) => {
+        if (permission === "granted") {
+          void subscribeToPush(wakeUpTime);
+          void checkCatchUp();
+        }
+      });
 
     const interval = setInterval(() => { void checkSchedule(); }, 30_000);
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Re-send subscription to server whenever wakeUpTime changes
+  useEffect(() => {
+    if (wakeUpTime && Notification.permission === "granted") {
+      void subscribeToPush(wakeUpTime);
+    }
+  }, [wakeUpTime]);
 }

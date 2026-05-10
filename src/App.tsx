@@ -33,7 +33,7 @@ const viewNames = ["Inicio", "Menú", "Agua", "Medicamentos", "Ejercicios", "Evo
 
 export default function App() {
   const state = useAppState();
-  useNotifications();
+  useNotifications(state.wakeUpTime);
   const [showSplash, setShowSplash] = useState(true);
   const [showAssistant, setShowAssistant] = useState(false);
   const [splashPhase, setSplashPhase] = useState<"in" | "out">("in");

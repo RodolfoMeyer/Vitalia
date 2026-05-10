@@ -11,6 +11,9 @@ export default defineConfig({
     inspectAttr(),
     react(),
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'vitalia-icon.svg', 'apple-touch-icon-180x180.png'],
       manifest: {
@@ -31,10 +34,8 @@ export default defineConfig({
           { src: 'maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        // Don't cache the custom sw.js — it's our own notification handler
-        navigateFallback: '/',
       },
     }),
   ],

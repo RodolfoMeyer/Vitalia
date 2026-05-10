@@ -1,0 +1,15 @@
+name: Send Push Notifications
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # runs every 5 minutes
+  workflow_dispatch:         # allows manual trigger for testing
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger scheduled notifications
+        run: |
+          curl -s "https://app-nine-chi-25.vercel.app/api/send-notifications?secret=${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json"
