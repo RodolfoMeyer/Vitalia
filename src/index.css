@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 240 20% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 20% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 20% 10%;
+    --primary: 162 59% 26%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 38 91% 55%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 220 14% 94%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 162 50% 94%;
+    --accent-foreground: 162 59% 26%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 162 59% 26%;
+    --radius: 1.25rem;
+    --water: 204 65% 54%;
+    --success: 158 64% 39%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Outfit', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    overscroll-behavior-y: none;
+  }
+}

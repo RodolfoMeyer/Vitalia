@@ -1,0 +1,186 @@
+import { useEffect } from "react";
+import { notificationSchedule } from "@/data/menuData";
+import type { CustomMedication } from "@/hooks/useAppState";
+
+// ── Time utilities ────────────────────────────────────────────────────────────
+
+function getTodayISO(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+function getCurrentHHMM(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function timeToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function minutesToHHMM(mins: number): string {
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, mins));
+  return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
+}
+
+// ── Wake-up offset ────────────────────────────────────────────────────────────
+const BASE_WAKE_UP = "08:00";
+
+function getOffset(wakeUpTime: string | null): number {
+  if (!wakeUpTime) return 0;
+  return timeToMinutes(wakeUpTime) - timeToMinutes(BASE_WAKE_UP);
+}
+
+function getWakeUpTime(): string | null {
+  const storedDate = localStorage.getItem("vitalia_wakeup_date");
+  if (storedDate !== getTodayISO()) return null;
+  return localStorage.getItem("vitalia_wakeup_time");
+}
+
+// ── Service Worker registration ───────────────────────────────────────────────
+
+let swReg: ServiceWorkerRegistration | null = null;
+
+async function getSWReg(): Promise<ServiceWorkerRegistration | null> {
+  if (!("serviceWorker" in navigator)) return null;
+  if (swReg) return swReg;
+  try {
+    swReg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    await navigator.serviceWorker.ready;
+    return swReg;
+  } catch (e) {
+    console.warn("[Vitalia] SW register failed:", e);
+    return null;
+  }
+}
+
+// ── Permission ────────────────────────────────────────────────────────────────
+
+export async function requestNotificationPermission(): Promise<NotificationPermission> {
+  if (!("Notification" in window)) return "denied";
+  if (Notification.permission !== "default") return Notification.permission;
+  return await Notification.requestPermission();
+}
+
+// ── Fire a notification (SW-first, then direct fallback) ─────────────────────
+
+export async function fireNotification(title: string, body: string): Promise<void> {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+  const opts: NotificationOptions = { body, icon: "/favicon.ico", badge: "/favicon.ico" };
+
+  // Service Worker path — required on Android Chrome & iOS PWA
+  const reg = await getSWReg();
+  if (reg) {
+    try {
+      await reg.showNotification(title, opts);
+      return;
+    } catch (e) {
+      console.warn("[Vitalia] SW showNotification failed:", e);
+    }
+  }
+
+  // Direct fallback — works on desktop browsers
+  try {
+    new Notification(title, opts);
+  } catch (e) {
+    console.warn("[Vitalia] Notification() failed:", e);
+  }
+}
+
+function loadCustomMeds(): CustomMedication[] {
+  try {
+    const raw = localStorage.getItem("vitalia_custom_meds");
+    if (raw) return JSON.parse(raw) as CustomMedication[];
+  } catch { /* ignore */ }
+  return [];
+}
+
+// ── Catch-up: fire missed notifications from the last 30 min ─────────────────
+
+async function checkCatchUp(): Promise<void> {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+  const now      = new Date();
+  const nowMins  = now.getHours() * 60 + now.getMinutes();
+  const todayISO = getTodayISO();
+  const offset   = getOffset(getWakeUpTime());
+
+  for (const notif of notificationSchedule) {
+    if (notif.startDate && todayISO < notif.startDate) continue;
+    const shiftedMins = timeToMinutes(notif.time) + offset;
+    const diff        = nowMins - shiftedMins;
+    if (diff < 0 || diff > 30) continue;
+
+    const sentKey = `vitalia_notif_${notif.id}_${todayISO}`;
+    if (localStorage.getItem(sentKey)) continue;
+    localStorage.setItem(sentKey, "1");
+    await fireNotification(notif.title, notif.body);
+  }
+
+  const customMeds = loadCustomMeds();
+  for (const med of customMeds) {
+    const shiftedMins = timeToMinutes(med.time) + offset;
+    const diff        = nowMins - shiftedMins;
+    if (diff < 0 || diff > 30) continue;
+
+    const sentKey = `vitalia_notif_custom_${med.id}_${todayISO}`;
+    if (localStorage.getItem(sentKey)) continue;
+    localStorage.setItem(sentKey, "1");
+    const body = [med.dosage, med.instructions].filter(Boolean).join(" · ");
+    await fireNotification(`💊 ${med.name}`, body || "Hora de tomar tu medicamento.");
+  }
+}
+
+// ── Ongoing schedule check (every 30 s) ──────────────────────────────────────
+
+async function checkSchedule(): Promise<void> {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+  const currentTime = getCurrentHHMM();
+  const todayISO    = getTodayISO();
+  const offset      = getOffset(getWakeUpTime());
+
+  for (const notif of notificationSchedule) {
+    if (notif.startDate && todayISO < notif.startDate) continue;
+    const shiftedTime = offset === 0
+      ? notif.time
+      : minutesToHHMM(timeToMinutes(notif.time) + offset);
+
+    if (shiftedTime !== currentTime) continue;
+    const sentKey = `vitalia_notif_${notif.id}_${todayISO}`;
+    if (localStorage.getItem(sentKey)) continue;
+    localStorage.setItem(sentKey, "1");
+    await fireNotification(notif.title, notif.body);
+  }
+
+  const customMeds = loadCustomMeds();
+  for (const med of customMeds) {
+    const shiftedTime = offset === 0
+      ? med.time
+      : minutesToHHMM(timeToMinutes(med.time) + offset);
+
+    if (shiftedTime !== currentTime) continue;
+    const sentKey = `vitalia_notif_custom_${med.id}_${todayISO}`;
+    if (localStorage.getItem(sentKey)) continue;
+    localStorage.setItem(sentKey, "1");
+    const body = [med.dosage, med.instructions].filter(Boolean).join(" · ");
+    await fireNotification(`💊 ${med.name}`, body || "Hora de tomar tu medicamento.");
+  }
+}
+
+// ── Hook ─────────────────────────────────────────────────────────────────────
+
+export function useNotifications(): void {
+  useEffect(() => {
+    // Register SW + request permission, then catch up missed notifications
+    getSWReg().then(() => {
+      return requestNotificationPermission();
+    }).then(() => {
+      return checkCatchUp();
+    });
+
+    const interval = setInterval(() => { void checkSchedule(); }, 30_000);
+    return () => clearInterval(interval);
+  }, []);
+}
