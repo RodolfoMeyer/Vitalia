@@ -223,7 +223,8 @@ export function EvolutionView({
   const [goalInput,   setGoalInput]   = useState(weightGoal ? String(weightGoal) : "73");
 
   // Form collapsed / expanded
-  const [formOpen, setFormOpen] = useState(false);
+  // Abre el formulario por defecto si no hay entradas aún
+  const [formOpen, setFormOpen] = useState(() => entries.length === 0);
 
   /* ── Bluetooth ──────────────────────────────────────────────────────── */
   const connectScale = useCallback(async () => {
@@ -601,7 +602,29 @@ export function EvolutionView({
         </motion.div>
       )}
 
-      {/* ══ COMPOSICIÓN DEL CUERPO (donut) ══════════════════════════════ */}
+      {/* ══ COMPOSICIÓN DEL CUERPO (donut o placeholder) ════════════════ */}
+      {latestEntry && !compData && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.08 }}
+          className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
+        >
+          <p className="text-[15px] font-semibold text-[#1A1A2E] mb-1">Composición del cuerpo</p>
+          <p className="text-[12px] text-[#9CA3AF] mb-4">Para ver el gráfico, registra los datos de composición corporal</p>
+          <div className="grid grid-cols-2 gap-2 text-[12px] text-[#6B7280]">
+            {["Grasa corporal (%)", "Proteínas (%)", "Agua corporal (%)", "Masa ósea (kg)"].map((f) => (
+              <div key={f} className="flex items-center gap-2 bg-[#F8FAFB] rounded-[10px] px-3 py-2">
+                <span className="w-2 h-2 rounded-full bg-[#E5E7EB] flex-shrink-0" />
+                {f}
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-[#9CA3AF] text-center mt-3">
+            Ingresa estos campos en "Registrar nueva medida" →
+          </p>
+        </motion.div>
+      )}
       {compData && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -655,7 +678,23 @@ export function EvolutionView({
         </motion.div>
       )}
 
-      {/* ══ BALANCE CALÓRICO (velocímetro) ══════════════════════════════ */}
+      {/* ══ BALANCE CALÓRICO (velocímetro o placeholder) ════════════════ */}
+      {latestEntry && bmrVal === null && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.12 }}
+          className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
+        >
+          <p className="text-[15px] font-semibold text-[#1A1A2E] mb-1">Balance calórico</p>
+          <p className="text-[12px] text-[#9CA3AF]">
+            Registra tu <strong>TMB (Tasa Metabólica Basal)</strong> en la medida para activar el velocímetro.
+          </p>
+          <div className="mt-3 bg-[#FFF5E0] rounded-[12px] px-4 py-3 text-[12px] text-[#92400E]">
+            📍 Encuéntrala en Huawei Health → Control del peso → Tasa metabólica basal
+          </div>
+        </motion.div>
+      )}
       {calorieBalance !== null && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}

@@ -1,6 +1,10 @@
 import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Droplets } from "lucide-react";
+import { Droplets, TrendingUp } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, ReferenceLine, Cell,
+} from "recharts";
 
 const TOTAL_GLASSES = 12;
 const ML_PER_GLASS  = 250;
@@ -13,6 +17,15 @@ const staggerContainer = {
 const gridItem = {
   hidden: { opacity: 0, scale: 0.5 },
   show:   { opacity: 1, scale: 1, transition: { duration: 0.3, ease: "easeInOut" as const } },
+};
+
+const tooltipStyle = {
+  background: "white",
+  border: "none",
+  borderRadius: "12px",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.12)",
+  fontSize: "13px",
+  padding: "8px 12px",
 };
 
 function getLast7Days(): string[] {
@@ -30,6 +43,16 @@ function shortDay(iso: string): string {
   return d.toLocaleDateString("es-ES", { weekday: "short" }).replace(".", "").slice(0, 2).toUpperCase();
 }
 
+function getLast30Days(): string[] {
+  const days: string[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(d.toISOString().split("T")[0]);
+  }
+  return days;
+}
+
 interface WaterViewProps {
   waterCount:   number;
   waterHistory: Record<string, number>;
@@ -39,6 +62,7 @@ interface WaterViewProps {
 
 export function WaterView({ waterCount, waterHistory, onSetWater, onReset }: WaterViewProps) {
   const [burstIndex, setBurstIndex] = useState<number | null>(null);
+  const [chartRange, setChartRange] = useState<"7" | "30">("7");
 
   const fillPercent = (waterCount / TOTAL_GLASSES) * 100;
   const remaining   = TOTAL_GLASSES - waterCount;
@@ -58,8 +82,29 @@ export function WaterView({ waterCount, waterHistory, onSetWater, onReset }: Wat
     [waterCount, onSetWater]
   );
 
-  const last7 = getLast7Days();
+  const last7  = getLast7Days();
+  const last30 = getLast30Days();
   const todayISO = last7[last7.length - 1];
+
+  // Chart data
+  const days = chartRange === "7" ? last7 : last30;
+  const chartData = days.map((iso) => {
+    const count = iso === todayISO ? waterCount : (waterHistory[iso] ?? 0);
+    return {
+      day:   shortDay(iso),
+      iso,
+      vasos: count,
+      isToday: iso === todayISO,
+      reached: count >= TOTAL_GLASSES,
+    };
+  });
+
+  // Stats
+  const daysWithData = chartData.filter((d) => d.vasos > 0);
+  const avgGlasses   = daysWithData.length > 0
+    ? (daysWithData.reduce((s, d) => s + d.vasos, 0) / daysWithData.length).toFixed(1)
+    : "—";
+  const goalDays = chartData.filter((d) => d.reached).length;
 
   return (
     <motion.div
@@ -71,7 +116,7 @@ export function WaterView({ waterCount, waterHistory, onSetWater, onReset }: Wat
     >
       <h2 className="text-2xl font-bold text-[#1A1A2E] mb-5">Hidratación</h2>
 
-      {/* ---- Water Hero ---- */}
+      {/* ── Water Hero ────────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -112,7 +157,7 @@ export function WaterView({ waterCount, waterHistory, onSetWater, onReset }: Wat
         <div className="absolute top-6 right-12 w-2 h-2 rounded-full bg-white/20" />
       </motion.div>
 
-      {/* ---- Remaining indicator ---- */}
+      {/* ── Remaining indicator ───────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -127,20 +172,23 @@ export function WaterView({ waterCount, waterHistory, onSetWater, onReset }: Wat
               <p className="text-[12px] text-[#9CA3AF]">Faltan</p>
               <p className="text-[18px] font-bold text-[#3B9DD8]">
                 {remaining} vasos
-                <span className="text-[13px] font-normal text-[#9CA3AF] ml-1">· {remainingML >= 1000 ? `${(remainingML / 1000).toFixed(2)}L` : `${remainingML}ml`}</span>
+                <span className="text-[13px] font-normal text-[#9CA3AF] ml-1">
+                  · {remainingML >= 1000 ? `${(remainingML / 1000).toFixed(2)}L` : `${remainingML}ml`}
+                </span>
               </p>
             </div>
             <div className="text-right">
               <p className="text-[12px] text-[#9CA3AF]">Tomados</p>
               <p className="text-[18px] font-bold text-[#1A1A2E]">
-                {(waterCount * ML_PER_GLASS / 1000).toFixed(2)}<span className="text-[13px] font-normal text-[#9CA3AF] ml-1">L</span>
+                {(waterCount * ML_PER_GLASS / 1000).toFixed(2)}
+                <span className="text-[13px] font-normal text-[#9CA3AF] ml-1">L</span>
               </p>
             </div>
           </>
         )}
       </motion.div>
 
-      {/* ---- Water Grid ---- */}
+      {/* ── Water Grid ────────────────────────────────────────────────── */}
       <motion.div variants={staggerContainer} initial="hidden" animate="show" className="grid grid-cols-4 gap-3 mb-6">
         {Array.from({ length: TOTAL_GLASSES }).map((_, index) => {
           const isFilled   = index < waterCount;
@@ -176,53 +224,117 @@ export function WaterView({ waterCount, waterHistory, onSetWater, onReset }: Wat
         })}
       </motion.div>
 
-      {/* ---- 7-day history ---- */}
+      {/* ── Estadísticas resumidas ────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.12 }}
+        className="grid grid-cols-2 gap-3 mb-5"
+      >
+        <div className="bg-white rounded-[16px] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <p className="text-[11px] text-[#9CA3AF] mb-0.5">Promedio diario</p>
+          <p className="text-[24px] font-bold text-[#3B9DD8] leading-none">
+            {avgGlasses}
+            <span className="text-[13px] font-medium text-[#9CA3AF] ml-1">vasos</span>
+          </p>
+          <p className="text-[11px] text-[#9CA3AF] mt-1">últimos {chartRange === "7" ? "7" : "30"} días</p>
+        </div>
+        <div className="bg-white rounded-[16px] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <p className="text-[11px] text-[#9CA3AF] mb-0.5">Meta alcanzada</p>
+          <p className="text-[24px] font-bold text-[#1B6B5B] leading-none">
+            {goalDays}
+            <span className="text-[13px] font-medium text-[#9CA3AF] ml-1">días</span>
+          </p>
+          <p className="text-[11px] text-[#9CA3AF] mt-1">de {days.length} registrados</p>
+        </div>
+      </motion.div>
+
+      {/* ── Historial (gráfico Recharts) ──────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.15 }}
-        className="bg-white rounded-[20px] p-4 shadow-[0_4px_24px_rgba(0,0,0,0.06)] mb-5"
+        className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)] mb-5"
       >
-        <p className="text-[13px] font-semibold text-[#1A1A2E] mb-3">Últimos 7 días</p>
-        <div className="flex items-end gap-2 h-[72px]">
-          {last7.map((iso) => {
-            const count   = iso === todayISO ? waterCount : (waterHistory[iso] ?? 0);
-            const pct     = count / TOTAL_GLASSES;
-            const isToday = iso === todayISO;
-            const reached = count >= TOTAL_GLASSES;
-            return (
-              <div key={iso} className="flex-1 flex flex-col items-center gap-1">
-                <span className="text-[10px] font-bold" style={{ color: reached ? "#1B6B5B" : "#9CA3AF" }}>
-                  {count > 0 ? count : ""}
-                </span>
-                <div className="w-full rounded-[6px] bg-[#EFF6FF] overflow-hidden" style={{ height: "48px" }}>
-                  <motion.div
-                    className="w-full rounded-[6px]"
-                    style={{
-                      height: `${Math.max(4, pct * 100)}%`,
-                      marginTop: `${(1 - Math.max(0.04, pct)) * 100}%`,
-                      background: reached
-                        ? "linear-gradient(180deg,#1B6B5B,#2D8B7A)"
-                        : isToday
-                        ? "linear-gradient(180deg,#3B9DD8,#1E6FA3)"
-                        : "linear-gradient(180deg,#7EC8E3,#3B9DD8)",
-                    }}
-                    initial={false}
-                    animate={{ height: `${Math.max(4, pct * 100)}%` }}
-                    transition={{ duration: 0.5 }}
-                  />
-                </div>
-                <span className={`text-[10px] ${isToday ? "font-bold text-[#3B9DD8]" : "text-[#9CA3AF]"}`}>
-                  {shortDay(iso)}
-                </span>
-              </div>
-            );
-          })}
+        {/* Header con selector de rango */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-[#3B9DD8]" />
+            <p className="text-[15px] font-semibold text-[#1A1A2E]">Historial de hidratación</p>
+          </div>
+          <div className="flex gap-1 p-1 bg-[#F3F4F6] rounded-xl">
+            {(["7", "30"] as const).map((r) => (
+              <button
+                key={r}
+                onClick={() => setChartRange(r)}
+                className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all ${
+                  chartRange === r ? "bg-white text-[#3B9DD8] shadow-sm" : "text-[#9CA3AF]"
+                }`}
+              >
+                {r}d
+              </button>
+            ))}
+          </div>
         </div>
-        <p className="text-[11px] text-[#C4C9D4] text-center mt-2">Meta: {TOTAL_GLASSES} vasos/día · Verde = meta alcanzada</p>
+
+        {/* Recharts BarChart */}
+        <ResponsiveContainer width="100%" height={180}>
+          <BarChart
+            data={chartData}
+            margin={{ top: 5, right: 4, left: -28, bottom: 0 }}
+            barSize={chartRange === "7" ? 28 : 10}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+            <XAxis
+              dataKey="day"
+              tick={{ fontSize: 10, fill: "#9CA3AF" }}
+              tickLine={false}
+              axisLine={false}
+              interval={chartRange === "30" ? 4 : 0}
+            />
+            <YAxis
+              tick={{ fontSize: 10, fill: "#9CA3AF" }}
+              tickLine={false}
+              axisLine={false}
+              domain={[0, TOTAL_GLASSES]}
+              ticks={[0, 3, 6, 9, 12]}
+            />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              formatter={(v) => [`${v} vasos · ${(Number(v) * ML_PER_GLASS / 1000).toFixed(2)}L`, "Hidratación"]}
+              labelFormatter={(l) => `${l}`}
+            />
+            <ReferenceLine
+              y={TOTAL_GLASSES}
+              stroke="#1B6B5B"
+              strokeDasharray="4 3"
+              strokeWidth={1.5}
+              label={{ value: "Meta", position: "insideTopRight", fontSize: 10, fill: "#1B6B5B" }}
+            />
+            <Bar dataKey="vasos" radius={[5, 5, 0, 0]}>
+              {chartData.map((d, i) => (
+                <Cell
+                  key={i}
+                  fill={
+                    d.reached
+                      ? "#1B6B5B"
+                      : d.isToday
+                      ? "#3B9DD8"
+                      : "#93C5FD"
+                  }
+                  opacity={d.vasos === 0 ? 0.3 : 1}
+                />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+
+        <p className="text-[11px] text-[#9CA3AF] text-center mt-2">
+          🟢 Meta alcanzada · 🔵 Hoy · 🩵 Otros días
+        </p>
       </motion.div>
 
-      {/* ---- Reset Button ---- */}
+      {/* ── Reset Button ──────────────────────────────────────────────── */}
       <div className="text-center">
         <button
           onClick={onReset}
