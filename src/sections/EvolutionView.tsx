@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   TrendingUp, TrendingDown, Save, Trash2, Ruler, Bluetooth, BluetoothOff,
@@ -226,6 +226,22 @@ export function EvolutionView({
   // Goal editing
   const [editingGoal, setEditingGoal] = useState(false);
   const [goalInput,   setGoalInput]   = useState(weightGoal ? String(weightGoal) : "73");
+  const [goalSaved,   setGoalSaved]   = useState(false);
+
+  // Sync goalInput when weightGoal prop changes (e.g. after backup restore)
+  useEffect(() => {
+    if (weightGoal !== null) setGoalInput(String(weightGoal));
+  }, [weightGoal]);
+
+  const saveGoal = useCallback((raw: string) => {
+    const v = parseFloat(raw);
+    if (!isNaN(v) && v > 0) {
+      onSetWeightGoal(v);
+      setGoalSaved(true);
+      setTimeout(() => setGoalSaved(false), 2000);
+    }
+    setEditingGoal(false);
+  }, [onSetWeightGoal]);
 
   // Form collapsed / expanded
   // Abre el formulario por defecto si no hay entradas aún
@@ -368,31 +384,40 @@ export function EvolutionView({
     : null;
   const latestImcStatus = latestEntry ? getImcStatus(latestEntry.imc) : null;
 
-  // ── Composición del cuerpo (donut) ─────────────────────────────────────
-  const hasCompFull = latestEntry &&
-    latestEntry.bodyWater != null &&
-    latestEntry.proteins  != null &&
-    latestEntry.bodyFat   != null &&
-    latestEntry.boneMass  != null;
+  // ── Composición del cuerpo (donut) — muestra con cualquier campo disponible
+  const hasCompAny = latestEntry && (
+    latestEntry.bodyFat   != null ||
+    latestEntry.bodyWater != null ||
+    latestEntry.proteins  != null ||
+    latestEntry.boneMass  != null
+  );
 
-  const compData = hasCompFull ? (() => {
+  const compData = hasCompAny ? (() => {
     const w = latestEntry!.weight;
-    const agua = parseFloat(((latestEntry!.bodyWater! / 100) * w).toFixed(1));
-    const prot = parseFloat(((latestEntry!.proteins!  / 100) * w).toFixed(1));
-    const gras = parseFloat(((latestEntry!.bodyFat!   / 100) * w).toFixed(1));
-    const osea = parseFloat(latestEntry!.boneMass!.toFixed(2));
-    return [
-      { name: "Agua",      value: agua, color: "#3B9DD8" },
-      { name: "Proteínas", value: prot, color: "#1B6B5B" },
-      { name: "Grasa",     value: gras, color: "#E8890C" },
-      { name: "Masa ósea", value: osea, color: "#D1D5DB" },
-    ];
+    const result: { name: string; value: number; color: string; pct?: string }[] = [];
+    if (latestEntry!.bodyWater != null) {
+      const kg = parseFloat(((latestEntry!.bodyWater / 100) * w).toFixed(1));
+      result.push({ name: "Agua", value: kg, color: "#3B9DD8", pct: `${latestEntry!.bodyWater.toFixed(1)}%` });
+    }
+    if (latestEntry!.proteins != null) {
+      const kg = parseFloat(((latestEntry!.proteins / 100) * w).toFixed(1));
+      result.push({ name: "Proteínas", value: kg, color: "#1B6B5B", pct: `${latestEntry!.proteins.toFixed(1)}%` });
+    }
+    if (latestEntry!.bodyFat != null) {
+      const kg = parseFloat(((latestEntry!.bodyFat / 100) * w).toFixed(1));
+      result.push({ name: "Grasa", value: kg, color: "#E8890C", pct: `${latestEntry!.bodyFat.toFixed(1)}%` });
+    }
+    if (latestEntry!.boneMass != null) {
+      result.push({ name: "Masa ósea", value: latestEntry!.boneMass, color: "#D1D5DB", pct: `${latestEntry!.boneMass.toFixed(2)} kg` });
+    }
+    return result.length > 0 ? result : null;
   })() : null;
 
   // ── Balance calórico ────────────────────────────────────────────────────
   const todayKcal = Object.values(foodLog[todayISO] ?? {})
     .reduce((sum, e) => sum + (parseInt(e.kcal || "0", 10) || 0), 0);
-  const bmrVal = latestEntry?.bmr ?? null;
+  // Use BMR from any entry that has it (latest first, then search backwards)
+  const bmrVal = allSorted.slice().reverse().find((e) => e.bmr != null)?.bmr ?? null;
   // positive = deficit (burning > eating = good), negative = surplus (bad)
   const calorieBalance = bmrVal != null ? bmrVal - todayKcal : null;
 
@@ -503,22 +528,13 @@ export function EvolutionView({
                     onChange={(e) => setGoalInput(e.target.value)}
                     className="w-14 text-center text-[14px] font-bold text-[#1B6B5B] border-b-2 border-[#1B6B5B] bg-transparent outline-none"
                     autoFocus
+                    onBlur={() => saveGoal(goalInput)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const v = parseFloat(goalInput);
-                        if (!isNaN(v) && v > 0) onSetWeightGoal(v);
-                        setEditingGoal(false);
-                      }
+                      if (e.key === "Enter") saveGoal(goalInput);
+                      if (e.key === "Escape") setEditingGoal(false);
                     }}
                   />
-                  <button
-                    onClick={() => {
-                      const v = parseFloat(goalInput);
-                      if (!isNaN(v) && v > 0) onSetWeightGoal(v);
-                      setEditingGoal(false);
-                    }}
-                    className="text-[#1B6B5B]"
-                  >
+                  <button onClick={() => saveGoal(goalInput)} className="text-[#1B6B5B]">
                     <Check className="w-4 h-4" />
                   </button>
                 </div>
@@ -527,11 +543,17 @@ export function EvolutionView({
                   onClick={() => { setGoalInput(weightGoal ? String(weightGoal) : "73"); setEditingGoal(true); }}
                   className="flex items-center justify-center gap-1 mx-auto"
                 >
-                  <p className="text-[17px] font-bold text-[#1B6B5B]">
-                    {weightGoal ?? "—"}
-                    {weightGoal && <span className="text-[11px] font-medium ml-0.5">kg</span>}
-                  </p>
-                  <Edit3 className="w-3 h-3 text-[#9CA3AF]" />
+                  {goalSaved ? (
+                    <p className="text-[13px] font-semibold text-[#1B6B5B]">✓ Guardado</p>
+                  ) : (
+                    <>
+                      <p className="text-[17px] font-bold text-[#1B6B5B]">
+                        {weightGoal ?? "—"}
+                        {weightGoal && <span className="text-[11px] font-medium ml-0.5">kg</span>}
+                      </p>
+                      <Edit3 className="w-3 h-3 text-[#9CA3AF]" />
+                    </>
+                  )}
                 </button>
               )}
             </div>
@@ -620,17 +642,27 @@ export function EvolutionView({
           className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
         >
           <p className="text-[15px] font-semibold text-[#1A1A2E] mb-1">Composición del cuerpo</p>
-          <p className="text-[12px] text-[#9CA3AF] mb-4">Para ver el gráfico, registra los datos de composición corporal</p>
+          <p className="text-[12px] text-[#9CA3AF] mb-4">
+            Ingresa los datos de Huawei Health en la sección "Composición corporal"
+          </p>
           <div className="grid grid-cols-2 gap-2 text-[12px] text-[#6B7280]">
-            {["Grasa corporal (%)", "Proteínas (%)", "Agua corporal (%)", "Masa ósea (kg)"].map((f) => (
-              <div key={f} className="flex items-center gap-2 bg-[#F8FAFB] rounded-[10px] px-3 py-2">
-                <span className="w-2 h-2 rounded-full bg-[#E5E7EB] flex-shrink-0" />
-                {f}
+            {[
+              { label: "Índice de grasa (%)",  hint: "Ej: 26.6" },
+              { label: "Proteínas (%)",         hint: "Ej: 17.1" },
+              { label: "Agua corporal (%)",     hint: "Ej: 52.4" },
+              { label: "Masa ósea (kg)",        hint: "Ej: 3.50" },
+            ].map(({ label, hint }) => (
+              <div key={label} className="flex items-start gap-2 bg-[#F8FAFB] rounded-[10px] px-3 py-2">
+                <span className="w-2 h-2 rounded-full bg-[#E5E7EB] flex-shrink-0 mt-1" />
+                <div>
+                  <p>{label}</p>
+                  <p className="text-[10px] text-[#C4C4C4]">{hint}</p>
+                </div>
               </div>
             ))}
           </div>
           <p className="text-[11px] text-[#9CA3AF] text-center mt-3">
-            Ingresa estos campos en "Registrar nueva medida" →
+            Toca "Registrar nueva medida" ↓ y completa la sección Composición corporal
           </p>
         </motion.div>
       )}
@@ -676,7 +708,11 @@ export function EvolutionView({
                     <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: d.color }} />
                     <span className="text-[13px] text-[#6B7280]">{d.name}</span>
                   </div>
-                  <span className="text-[14px] font-semibold text-[#1A1A2E]">{d.value}</span>
+                  <div className="text-right">
+                    <span className="text-[14px] font-semibold text-[#1A1A2E]">{d.value}</span>
+                    <span className="text-[10px] text-[#9CA3AF] ml-0.5">kg</span>
+                    {d.pct && <p className="text-[10px] text-[#9CA3AF]">{d.pct}</p>}
+                  </div>
                 </div>
               ))}
             </div>
@@ -758,6 +794,62 @@ export function EvolutionView({
           {todayKcal === 0 && (
             <p className="text-[11px] text-[#9CA3AF] text-center mt-3">
               Registra tu alimentación en la pestaña Menú para ver el balance real
+            </p>
+          )}
+        </motion.div>
+      )}
+
+      {/* ══ PESO OBJETIVO (standalone, visible sin entradas) ════════════ */}
+      {!latestEntry && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.03 }}
+          className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[13px] text-[#9CA3AF] mb-0.5">Peso objetivo</p>
+              {editingGoal ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={goalInput}
+                    onChange={(e) => setGoalInput(e.target.value)}
+                    placeholder="73.0"
+                    className="w-20 px-2 py-1 text-[18px] font-bold text-[#1B6B5B] border-b-2 border-[#1B6B5B] bg-transparent outline-none"
+                    autoFocus
+                    onBlur={() => saveGoal(goalInput)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveGoal(goalInput);
+                      if (e.key === "Escape") setEditingGoal(false);
+                    }}
+                  />
+                  <span className="text-[13px] text-[#9CA3AF]">kg</span>
+                  <button onClick={() => saveGoal(goalInput)} className="text-[#1B6B5B]">
+                    <Check className="w-5 h-5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setGoalInput(weightGoal ? String(weightGoal) : ""); setEditingGoal(true); }}
+                  className="flex items-center gap-2"
+                >
+                  <p className="text-[22px] font-bold text-[#1B6B5B]">
+                    {goalSaved ? "✓ Guardado" : weightGoal ? `${weightGoal} kg` : "— Tocar para definir"}
+                  </p>
+                  {!goalSaved && <Edit3 className="w-4 h-4 text-[#9CA3AF]" />}
+                </button>
+              )}
+            </div>
+            <div className="w-12 h-12 rounded-full bg-[#E8F5F0] flex items-center justify-center">
+              <Target className="w-6 h-6 text-[#1B6B5B]" />
+            </div>
+          </div>
+          {weightGoal && (
+            <p className="text-[11px] text-[#9CA3AF] mt-2">
+              Registra tu primera medida para ver el progreso
             </p>
           )}
         </motion.div>
