@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Heart,
@@ -13,7 +13,80 @@ import {
   BellOff,
   BellRing,
   Pencil,
+  Download,
+  Upload,
+  Shield,
 } from "lucide-react";
+
+/* ── Backup helpers ──────────────────────────────────────────────────────── */
+const BACKUP_KEYS = [
+  "vitalia_evolution",
+  "vitalia_water_count", "vitalia_water_date", "vitalia_water_history",
+  "vitalia_meds_checked", "vitalia_meds_date", "vitalia_meds_history",
+  "vitalia_custom_meds", "vitalia_custom_meds_checked", "vitalia_custom_meds_date",
+  "vitalia_menu_checked", "vitalia_menu_date", "vitalia_food_log",
+  "vitalia_wakeup_time", "vitalia_wakeup_date",
+  "vitalia_weight_goal",
+  "vitalia_tip_idx", "vitalia_rec_idx", "vitalia_extip_idx",
+];
+
+function exportData(): void {
+  const payload: Record<string, unknown> = {
+    _meta: { app: "Vitalia", version: "1.0", date: new Date().toISOString() },
+  };
+  BACKUP_KEYS.forEach((key) => {
+    const v = localStorage.getItem(key);
+    if (v !== null) {
+      try { payload[key] = JSON.parse(v); } catch { payload[key] = v; }
+    }
+  });
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url  = URL.createObjectURL(blob);
+  const fileName = `vitalia-backup-${new Date().toISOString().split("T")[0]}.json`;
+
+  // iOS Safari: open in new tab so the user can "Share" → Save to Files
+  if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+    window.open(url, "_blank");
+  } else {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+}
+
+function importData(
+  file: File,
+  onSuccess: () => void,
+  onError: (msg: string) => void
+): void {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const raw = e.target?.result as string;
+      const payload = JSON.parse(raw) as Record<string, unknown>;
+      if (payload._meta === undefined || (payload._meta as Record<string,unknown>).app !== "Vitalia") {
+        onError("El archivo no es un backup válido de Vitalia.");
+        return;
+      }
+      BACKUP_KEYS.forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(payload, key)) {
+          const val = payload[key];
+          localStorage.setItem(key, typeof val === "string" ? val : JSON.stringify(val));
+        }
+      });
+      onSuccess();
+      setTimeout(() => window.location.reload(), 1200);
+    } catch {
+      onError("Error al leer el archivo. Puede estar dañado.");
+    }
+  };
+  reader.readAsText(file);
+}
 import { wellnessTips, medicalRecommendations } from "@/data/menuData";
 import { requestNotificationPermission, fireNotification } from "@/hooks/useNotifications";
 
@@ -90,6 +163,10 @@ export function HomeView({
   const [selectedTime, setSelectedTime] = useState(defaultTime);
   const [isEditingWakeUp, setIsEditingWakeUp] = useState(false);
   const [editTime, setEditTime] = useState(defaultTime);
+
+  // ── Backup state ──────────────────────────────────────────────────
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importStatus, setImportStatus] = useState<{ ok: boolean; msg: string } | null>(null);
 
   // ── Notification permission state ─────────────────────────────────
   const hasNotifAPI = "Notification" in window;
@@ -444,6 +521,80 @@ export function HomeView({
             <p className="text-[14px] text-[#6B7280] leading-relaxed">{dailyRec.body}</p>
           </div>
         </div>
+      </motion.div>
+
+      {/* ── Backup & Restore ───────────────────────────────────────────── */}
+      <motion.div
+        variants={cardReveal}
+        className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
+      >
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-9 h-9 rounded-full bg-[#F0F4FF] flex items-center justify-center flex-shrink-0">
+            <Shield className="w-4.5 h-4.5 text-[#6366F1]" />
+          </div>
+          <div>
+            <p className="text-[15px] font-semibold text-[#1A1A2E]">Respaldo de datos</p>
+            <p className="text-[12px] text-[#9CA3AF]">Exporta o restaura evolución, agua, medicamentos y más</p>
+          </div>
+        </div>
+
+        {/* Buttons row */}
+        <div className="flex gap-3">
+          {/* Export */}
+          <button
+            onClick={exportData}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-[14px] bg-[#F0F4FF] text-[#6366F1] text-[14px] font-semibold active:scale-[0.97] transition-transform"
+          >
+            <Download className="w-4 h-4" />
+            Descargar
+          </button>
+
+          {/* Import — hidden file input + styled label */}
+          <label className="flex-1 flex items-center justify-center gap-2 py-3 rounded-[14px] bg-[#E8F5F0] text-[#1B6B5B] text-[14px] font-semibold cursor-pointer active:scale-[0.97] transition-transform select-none">
+            <Upload className="w-4 h-4" />
+            Restaurar
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                importData(
+                  file,
+                  () => setImportStatus({ ok: true, msg: "✓ Datos restaurados. Recargando…" }),
+                  (msg) => setImportStatus({ ok: false, msg }),
+                );
+                // reset so the same file can be re-selected later
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+
+        {/* Status feedback */}
+        <AnimatePresence>
+          {importStatus && (
+            <motion.p
+              key="import-status"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className={`mt-3 text-[13px] font-medium text-center ${
+                importStatus.ok ? "text-[#1B6B5B]" : "text-red-500"
+              }`}
+            >
+              {importStatus.msg}
+            </motion.p>
+          )}
+        </AnimatePresence>
+
+        <p className="text-[11px] text-[#C4C4C4] text-center mt-3 leading-snug">
+          iOS borra datos si no abres la app en 7 días.{"\n"}Guarda un respaldo regularmente.
+        </p>
       </motion.div>
     </motion.div>
   );
