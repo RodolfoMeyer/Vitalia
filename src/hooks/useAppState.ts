@@ -284,17 +284,16 @@ export function useAppState() {
   );
 
   // ---- Wake-up time (daily) ----
+  // Only restore if the user already confirmed their wake-up time TODAY.
+  // On a new day, return null so the prompt appears and the user
+  // explicitly confirms — never auto-capture the app-open time.
   const [wakeUpTime, setWakeUpTimeState] = useState<string | null>(() => {
     const storedDate = localStorage.getItem("vitalia_wakeup_date");
     if (storedDate === todayISO) {
       return localStorage.getItem("vitalia_wakeup_time");
     }
-    // Auto-capture current time as wake-up time on first open of the day
-    const now = new Date();
-    const autoTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    localStorage.setItem("vitalia_wakeup_time", autoTime);
-    localStorage.setItem("vitalia_wakeup_date", todayISO);
-    return autoTime;
+    // New day (or first ever run): clear any stale value, wait for user confirmation
+    return null;
   });
 
   const setWakeUpTime = useCallback((time: string) => {
