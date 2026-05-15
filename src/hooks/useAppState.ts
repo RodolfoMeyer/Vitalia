@@ -224,6 +224,21 @@ export function useAppState() {
     });
   }, [todayISO]);
 
+  // ---- Weight goal ----
+  const [weightGoal, setWeightGoalState] = useState<number | null>(() => {
+    const v = localStorage.getItem("vitalia_weight_goal");
+    return v ? parseFloat(v) : null;
+  });
+
+  const setWeightGoal = useCallback((goal: number | null) => {
+    if (goal === null) {
+      localStorage.removeItem("vitalia_weight_goal");
+    } else {
+      localStorage.setItem("vitalia_weight_goal", String(goal));
+    }
+    setWeightGoalState(goal);
+  }, []);
+
   // ---- Evolution entries ----
   const [evolutionEntries, setEvolutionEntries] = useState<MeasureEntry[]>(() =>
     loadJSON<MeasureEntry[]>("vitalia_evolution", [])
@@ -366,6 +381,8 @@ export function useAppState() {
     evolutionEntries,
     addEvolutionEntry,
     deleteEvolutionEntry,
+    weightGoal,
+    setWeightGoal,
     // Stats
     completedTasks,
     totalTasks,

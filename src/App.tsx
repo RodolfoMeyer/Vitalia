@@ -224,6 +224,8 @@ export default function App() {
                   entries={state.evolutionEntries}
                   onAddEntry={state.addEvolutionEntry}
                   onDeleteEntry={state.deleteEvolutionEntry}
+                  weightGoal={state.weightGoal}
+                  onSetWeightGoal={state.setWeightGoal}
                 />
               </motion.div>
             )}
