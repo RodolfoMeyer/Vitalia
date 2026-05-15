@@ -199,7 +199,11 @@ export function EvolutionView({
 }: EvolutionViewProps) {
   const today = new Date().toISOString().split("T")[0];
   const [date,   setDate]   = useState(today);
-  const [height, setHeight] = useState("");
+  // Pre-rellenar estatura desde la última entrada (no cambia)
+  const [height, setHeight] = useState(() => {
+    const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+    return sorted.length > 0 ? String(sorted[sorted.length - 1].height) : "";
+  });
   const [weight, setWeight] = useState("");
   const [neck,   setNeck]   = useState("");
   const [waist,  setWaist]  = useState("");
@@ -215,8 +219,9 @@ export function EvolutionView({
   const [bmr,         setBmr]         = useState("");
   const [bodyWater,   setBodyWater]   = useState("");
 
-  const [btStatus,  setBtStatus]  = useState<"idle"|"scanning"|"connected"|"error"|"unavailable">("idle");
-  const [btMessage, setBtMessage] = useState("");
+  const [btStatus,       setBtStatus]       = useState<"idle"|"scanning"|"connected"|"error"|"unavailable">("idle");
+  const [btMessage,      setBtMessage]      = useState("");
+  const [btDataReceived, setBtDataReceived] = useState(false);
 
   // Goal editing
   const [editingGoal, setEditingGoal] = useState(false);
@@ -273,7 +278,9 @@ export function EvolutionView({
             if (flags & 0x0100) { const w = val.getUint16(offset, true) * 0.005; offset += 2; setWeight(w.toFixed(1)); }
             if (flags & 0x0200) { const h = val.getUint16(offset, true) * 0.1; offset += 2; setHeight(h.toFixed(0)); }
           }
-          setBtMessage("✓ Datos recibidos. Revisa y guarda.");
+          setBtMessage("✓ Datos recibidos. Formulario listo para guardar.");
+          setBtDataReceived(true);
+          setFormOpen(true);
         });
         handled = true;
       } catch { /* service not found */ }
@@ -289,7 +296,9 @@ export function EvolutionView({
             if (!(flags & 0x01)) {
               const w = val.getUint16(1, true) * 0.005;
               setWeight(w.toFixed(1));
-              setBtMessage("✓ Peso recibido. Ingresa los demás datos manualmente.");
+              setBtMessage("✓ Peso recibido. Completa los demás datos y guarda.");
+              setBtDataReceived(true);
+              setFormOpen(true);
             }
           });
         } catch {
@@ -754,6 +763,139 @@ export function EvolutionView({
         </motion.div>
       )}
 
+      {/* ══ BLUETOOTH CARD (siempre visible) ════════════════════════════ */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.04 }}
+        className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{
+                background: btStatus === "connected"
+                  ? "#E8F5F0"
+                  : btStatus === "scanning"
+                  ? "#EFF6FF"
+                  : "#F3F4F6",
+              }}
+            >
+              {btStatus === "unavailable" || btStatus === "error"
+                ? <BluetoothOff className="w-5 h-5 text-[#E53E3E]" />
+                : <Bluetooth
+                    className="w-5 h-5"
+                    style={{ color: btStatus === "connected" ? "#1B6B5B" : btStatus === "scanning" ? "#3B9DD8" : "#9CA3AF" }}
+                  />
+              }
+            </div>
+            <div>
+              <p className="text-[15px] font-semibold text-[#1A1A2E]">Balanza Huawei AH100</p>
+              <p className="text-[11px] text-[#9CA3AF]">Sincroniza peso y composición corporal</p>
+            </div>
+          </div>
+          {/* Status badge */}
+          <div className="flex items-center gap-1.5">
+            <div
+              className={`w-2 h-2 rounded-full ${
+                btStatus === "connected"
+                  ? "bg-[#1B6B5B]"
+                  : btStatus === "scanning"
+                  ? "bg-[#3B9DD8] animate-pulse"
+                  : btStatus === "error" || btStatus === "unavailable"
+                  ? "bg-[#E53E3E]"
+                  : "bg-[#D1D5DB]"
+              }`}
+            />
+            <span className="text-[11px] text-[#9CA3AF]">
+              {btStatus === "connected"
+                ? "Conectada"
+                : btStatus === "scanning"
+                ? "Buscando…"
+                : btStatus === "error"
+                ? "Error"
+                : btStatus === "unavailable"
+                ? "No disponible"
+                : "Desconectada"}
+            </span>
+          </div>
+        </div>
+
+        {/* Pasos de uso */}
+        {btStatus === "idle" && !btDataReceived && (
+          <div className="flex gap-4 mb-4 text-[11px] text-[#9CA3AF]">
+            {[
+              { n: "1", t: "Enciende la balanza" },
+              { n: "2", t: "Toca Conectar" },
+              { n: "3", t: "Sube a la balanza" },
+            ].map(({ n, t }) => (
+              <div key={n} className="flex-1 text-center">
+                <div className="w-6 h-6 rounded-full bg-[#F3F4F6] text-[#6B7280] font-bold text-[12px] flex items-center justify-center mx-auto mb-1">
+                  {n}
+                </div>
+                {t}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Datos recibidos preview */}
+        {btDataReceived && (
+          <div className="mb-4 bg-[#E8F5F0] rounded-[12px] px-4 py-3">
+            <p className="text-[13px] font-semibold text-[#1B6B5B] mb-2">✓ Datos sincronizados</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[12px] text-[#1A1A2E]">
+              {weight    && <span>⚖️ Peso: <strong>{weight} kg</strong></span>}
+              {bodyFat   && <span>🫀 Grasa: <strong>{bodyFat}%</strong></span>}
+              {muscleMass && <span>💪 Músculo: <strong>{muscleMass} kg</strong></span>}
+              {bodyWater && <span>💧 Agua: <strong>{bodyWater}%</strong></span>}
+            </div>
+            <p className="text-[11px] text-[#1B6B5B] mt-2">Formulario pre-rellenado ↓ Revisa y guarda</p>
+          </div>
+        )}
+
+        {/* iOS unavailable */}
+        {btStatus === "unavailable" && (
+          <div className="mb-4 bg-[#FEF3C7] rounded-[12px] px-4 py-3">
+            <p className="text-[12px] text-[#92400E] leading-relaxed">
+              <strong>iPhone / Safari:</strong> Web Bluetooth no está disponible. Ingresa los datos manualmente desde la app <strong>Huawei Health</strong>.
+            </p>
+          </div>
+        )}
+
+        {/* Error message */}
+        {btMessage && btStatus !== "unavailable" && (
+          <p className={`text-[12px] mb-3 leading-relaxed ${btMessage.startsWith("✓") ? "text-[#1B6B5B]" : "text-[#6B7280]"}`}>
+            {btMessage}
+          </p>
+        )}
+
+        {/* Connect button */}
+        {btStatus !== "unavailable" && (
+          <button
+            onClick={() => { setBtDataReceived(false); void connectScale(); }}
+            disabled={btStatus === "scanning" || btStatus === "connected"}
+            className="w-full py-3 rounded-[14px] flex items-center justify-center gap-2 text-[14px] font-semibold transition-all active:scale-[0.98] disabled:opacity-60"
+            style={{
+              background: btStatus === "connected"
+                ? "#E8F5F0"
+                : "linear-gradient(135deg, #1A1A2E 0%, #374151 100%)",
+              color: btStatus === "connected" ? "#1B6B5B" : "#fff",
+            }}
+          >
+            <Bluetooth className="w-4 h-4" />
+            {btStatus === "scanning"
+              ? "Buscando balanza Huawei…"
+              : btStatus === "connected"
+              ? "Balanza conectada — datos recibidos"
+              : btDataReceived
+              ? "Reconectar balanza"
+              : "Conectar Balanza Huawei AH100"}
+          </button>
+        )}
+      </motion.div>
+
       {/* ══ BOTÓN: nueva medida ══════════════════════════════════════════ */}
       <motion.button
         {...fadeUp}
@@ -778,50 +920,14 @@ export function EvolutionView({
           transition={{ duration: 0.25 }}
           className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
         >
-          <p className="text-[15px] font-semibold text-[#1A1A2E] mb-4">Registrar Medidas</p>
-
-          {/* Bluetooth */}
-          <div className="mb-4">
-            <button
-              onClick={() => void connectScale()}
-              disabled={btStatus === "scanning" || btStatus === "connected"}
-              className="w-full py-2.5 rounded-[12px] flex items-center justify-center gap-2 text-[14px] font-semibold transition-all active:scale-[0.98] disabled:opacity-50"
-              style={{
-                background:
-                  btStatus === "connected"
-                    ? "#E8F5F0"
-                    : btStatus === "unavailable" || btStatus === "error"
-                    ? "#FEF3C7"
-                    : "#1A1A2E",
-                color:
-                  btStatus === "connected"
-                    ? "#1B6B5B"
-                    : btStatus === "unavailable" || btStatus === "error"
-                    ? "#92400E"
-                    : "#fff",
-              }}
-            >
-              {btStatus === "connected" ? (
-                <Bluetooth className="w-4 h-4" />
-              ) : btStatus === "unavailable" || btStatus === "error" ? (
-                <BluetoothOff className="w-4 h-4" />
-              ) : (
-                <Bluetooth className="w-4 h-4" />
-              )}
-              {btStatus === "scanning"
-                ? "Buscando balanza…"
-                : btStatus === "connected"
-                ? "Balanza conectada"
-                : "Conectar Balanza Huawei AH100"}
-            </button>
-            {btMessage && (
-              <p
-                className={`text-[11px] mt-1.5 px-1 leading-relaxed ${
-                  btStatus === "connected" ? "text-[#1B6B5B]" : "text-[#6B7280]"
-                }`}
-              >
-                {btMessage}
-              </p>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-[15px] font-semibold text-[#1A1A2E]">
+              {btDataReceived ? "✓ Datos de balanza — Revisar y guardar" : "Registrar Medidas"}
+            </p>
+            {btStatus === "connected" && (
+              <span className="flex items-center gap-1 text-[11px] text-[#1B6B5B] font-medium">
+                <Bluetooth className="w-3.5 h-3.5" /> Sincronizado
+              </span>
             )}
           </div>
 
