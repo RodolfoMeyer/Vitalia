@@ -158,11 +158,20 @@ export function HomeView({
     return `${h12}:${String(m).padStart(2, "0")} ${period}`;
   }
 
-  // Wake-up prompt local state
-  const defaultTime = `${String(today.getHours()).padStart(2, "0")}:${String(today.getMinutes()).padStart(2, "0")}`;
-  const [selectedTime, setSelectedTime] = useState(defaultTime);
+  // Wake-up manual registration state
+  // selectedTime and editTime are only set when the user explicitly opens the form
+  const [showWakeUpForm, setShowWakeUpForm] = useState(false);
+  const [selectedTime, setSelectedTime] = useState("07:00");
   const [isEditingWakeUp, setIsEditingWakeUp] = useState(false);
-  const [editTime, setEditTime] = useState(defaultTime);
+  const [editTime, setEditTime] = useState("07:00");
+
+  // Capture current time only when the user taps "Registrar"
+  function openWakeUpForm() {
+    const now = new Date();
+    const t = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    setSelectedTime(t);
+    setShowWakeUpForm(true);
+  }
 
   // ── Backup state ──────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -200,61 +209,83 @@ export function HomeView({
       animate="show"
       className="px-5 pt-6 pb-28 space-y-5"
     >
-      {/* ── Wake-up prompt (shows until confirmed) ─────────────────────── */}
-      <AnimatePresence>
-        {!wakeUpTime && (
+      {/* ── Wake-up registration (manual only) ────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {!wakeUpTime && !showWakeUpForm && (
           <motion.div
-            key="wakeup-prompt"
-            variants={cardReveal}
-            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-            transition={{ duration: 0.35 }}
-            className="overflow-hidden"
+            key="wakeup-btn"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
           >
-            <div
-              className="rounded-[20px] p-5 shadow-[0_4px_28px_rgba(27,107,91,0.18)]"
-              style={{ background: "linear-gradient(135deg, #0f4c38 0%, #1B6B5B 60%, #2a8a72 100%)" }}
+            <button
+              onClick={openWakeUpForm}
+              className="w-full flex items-center gap-3 rounded-[16px] px-4 py-3.5 active:scale-[0.98] transition-transform shadow-[0_2px_12px_rgba(27,107,91,0.12)]"
+              style={{ background: "linear-gradient(135deg, #1B6B5B 0%, #2D8B7A 100%)" }}
             >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                  <Sun className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-white font-semibold text-[16px]">¿Ya despertaste?</p>
-                  <p className="text-white/70 text-[13px]">Registra tu hora para ajustar todos los recordatorios del día</p>
-                </div>
+              <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+                <Sun className="w-5 h-5 text-white" />
               </div>
-
-              {/* Time input */}
-              <div className="bg-white/15 rounded-[14px] px-4 py-3 mb-4 flex items-center gap-3">
-                <Sun className="w-4 h-4 text-white/70 flex-shrink-0" />
-                <input
-                  type="time"
-                  value={selectedTime}
-                  onChange={(e) => setSelectedTime(e.target.value)}
-                  className="flex-1 bg-transparent text-white text-[22px] font-semibold tracking-wider focus:outline-none"
-                  style={{ colorScheme: "dark" }}
-                />
+              <div className="flex-1 text-left">
+                <p className="text-white font-semibold text-[15px]">Registrar hora de despertar</p>
+                <p className="text-white/70 text-[12px]">Toca para ingresar la hora manualmente</p>
               </div>
+              <Pencil className="w-4 h-4 text-white/60 flex-shrink-0" />
+            </button>
+          </motion.div>
+        )}
 
-              {/* First actions hint */}
-              <div className="bg-white/10 rounded-[12px] px-4 py-3 mb-4 space-y-1.5">
-                <p className="text-white/60 text-[11px] font-semibold uppercase tracking-wide mb-2">Al despertar</p>
-                <div className="flex items-center gap-2">
-                  <Droplets className="w-3.5 h-3.5 text-[#7DD3E8]" />
-                  <p className="text-white/90 text-[13px]">1 vaso de agua en ayunas</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Pill className="w-3.5 h-3.5 text-[#F5C87A]" />
-                  <p className="text-white/90 text-[13px]">Eutirox 150 mcg — solo con agua, esperar 30 min</p>
-                </div>
+        {!wakeUpTime && showWakeUpForm && (
+          <motion.div
+            key="wakeup-form"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
+            className="rounded-[20px] p-5 shadow-[0_4px_28px_rgba(27,107,91,0.18)]"
+            style={{ background: "linear-gradient(135deg, #0f4c38 0%, #1B6B5B 60%, #2a8a72 100%)" }}
+          >
+            <p className="text-white font-semibold text-[16px] mb-1">¿A qué hora despertaste?</p>
+            <p className="text-white/70 text-[13px] mb-4">Ajusta si es necesario y confirma</p>
+
+            <div className="bg-white/15 rounded-[14px] px-4 py-3 mb-4 flex items-center gap-3">
+              <Sun className="w-4 h-4 text-white/70 flex-shrink-0" />
+              <input
+                type="time"
+                value={selectedTime}
+                onChange={(e) => setSelectedTime(e.target.value)}
+                className="flex-1 bg-transparent text-white text-[22px] font-semibold tracking-wider focus:outline-none"
+                style={{ colorScheme: "dark" }}
+                autoFocus
+              />
+            </div>
+
+            <div className="bg-white/10 rounded-[12px] px-4 py-3 mb-4 space-y-1.5">
+              <p className="text-white/60 text-[11px] font-semibold uppercase tracking-wide mb-2">Al despertar</p>
+              <div className="flex items-center gap-2">
+                <Droplets className="w-3.5 h-3.5 text-[#7DD3E8]" />
+                <p className="text-white/90 text-[13px]">1 vaso de agua en ayunas</p>
               </div>
+              <div className="flex items-center gap-2">
+                <Pill className="w-3.5 h-3.5 text-[#F5C87A]" />
+                <p className="text-white/90 text-[13px]">Eutirox 150 mcg — solo con agua, esperar 30 min</p>
+              </div>
+            </div>
 
+            <div className="flex gap-2">
               <button
-                onClick={() => onSetWakeUpTime(selectedTime)}
-                className="w-full py-3.5 rounded-[12px] bg-white flex items-center justify-center gap-2 text-[15px] font-semibold text-[#1B6B5B] active:scale-[0.98] transition-transform"
+                onClick={() => setShowWakeUpForm(false)}
+                className="flex-1 py-3 rounded-[12px] bg-white/20 text-white text-[14px] font-semibold active:scale-[0.98] transition-transform"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { onSetWakeUpTime(selectedTime); setShowWakeUpForm(false); }}
+                className="flex-1 py-3 rounded-[12px] bg-white flex items-center justify-center gap-2 text-[15px] font-semibold text-[#1B6B5B] active:scale-[0.98] transition-transform"
               >
                 <Check className="w-4 h-4" />
-                Desperté a las {formatTime12(selectedTime)}
+                Confirmar
               </button>
             </div>
           </motion.div>
