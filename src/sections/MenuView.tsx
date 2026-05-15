@@ -35,8 +35,8 @@ function getDayISO(dayIndex: number, todayIndex: number, todayISO: string): stri
 interface MenuViewProps {
   todayIndex: number;
   todayISO: string;
-  menuChecked: Record<number, boolean[]>;
-  onToggleMeal: (dayIndex: number, mealIndex: number) => void;
+  menuChecked: Record<string, boolean[]>;
+  onToggleMeal: (dayISO: string, mealIndex: number) => void;
   foodLog: Record<string, DayFoodLog>;
   onUpdateFoodLog: (date: string, mealType: string, patch: Partial<FoodLogEntry>) => void;
 }
@@ -55,10 +55,10 @@ export function MenuView({
   const isThyroid     = menuMode === "thyroid";
   const isRegistro    = menuMode === "registro";
   const currentMenu   = isThyroid ? thyroidWeekMenu[selectedDay] : weekMenu[selectedDay];
-  const currentChecks = menuChecked[selectedDay] || new Array(currentMenu.meals.length).fill(false);
 
   // Build the day log for the selected day
   const selectedDayISO = getDayISO(selectedDay, todayIndex, todayISO);
+  const currentChecks = menuChecked[selectedDayISO] || new Array(currentMenu.meals.length).fill(false);
   const dayLog: DayFoodLog = foodLog[selectedDayISO] ?? {};
 
   return (
@@ -203,7 +203,7 @@ export function MenuView({
                   >
                     {/* Checkbox */}
                     <button
-                      onClick={() => onToggleMeal(selectedDay, idx)}
+                      onClick={() => onToggleMeal(selectedDayISO, idx)}
                       className={`flex-shrink-0 w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
                         isChecked
                           ? "bg-[#1B6B5B] border-[#1B6B5B]"

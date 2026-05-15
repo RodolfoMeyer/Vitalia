@@ -1,15 +1,9 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { TrendingUp, Save, Trash2, Ruler } from "lucide-react";
+import { TrendingUp, Save, Trash2, Ruler, Bluetooth, BluetoothOff, Activity } from "lucide-react";
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  ReferenceLine,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import type { MeasureEntry } from "@/hooks/useAppState";
 
@@ -142,6 +136,120 @@ export function EvolutionView({ entries, onAddEntry, onDeleteEntry }: EvolutionV
   const [saved,  setSaved]  = useState(false);
   const [range,  setRange]  = useState<TimeRange>("month");
 
+  const [bodyFat,    setBodyFat]    = useState("");
+  const [muscleMass, setMuscleMass] = useState("");
+  const [boneMass,   setBoneMass]   = useState("");
+  const [proteins,   setProteins]   = useState("");
+  const [visceralFat,setVisceralFat]= useState("");
+  const [bmr,        setBmr]        = useState("");
+  const [bodyWater,  setBodyWater]  = useState("");
+  const [btStatus,   setBtStatus]   = useState<"idle"|"scanning"|"connected"|"error"|"unavailable">("idle");
+  const [btMessage,  setBtMessage]  = useState("");
+
+  const connectScale = useCallback(async () => {
+    // iOS/Safari: Web Bluetooth not supported
+    if (!("bluetooth" in navigator)) {
+      setBtStatus("unavailable");
+      setBtMessage("Bluetooth no está disponible en iPhone/Safari. Ingresa los datos manualmente desde la app Huawei Health.");
+      return;
+    }
+    setBtStatus("scanning");
+    setBtMessage("Buscando balanza Huawei AH100…");
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const btNav = navigator as any;
+      const device = await btNav.bluetooth.requestDevice({
+        filters: [
+          { namePrefix: "HUAWEI" },
+          { namePrefix: "Huawei" },
+          { namePrefix: "Body Fat" },
+          { namePrefix: "AH100" },
+        ],
+        optionalServices: [0x181B, 0x181D, 0xFFF0],
+      });
+      setBtMessage(`Conectando a ${device.name ?? "balanza"}…`);
+      const server = await device.gatt!.connect();
+      setBtStatus("connected");
+
+      // Try Body Composition Service (0x181B) first
+      let handled = false;
+      try {
+        const svc  = await server.getPrimaryService(0x181B);
+        const char = await svc.getCharacteristic(0x2A9C);
+        await char.startNotifications();
+        char.addEventListener("characteristicvaluechanged", (ev: Event) => {
+          const val = (ev.target as unknown as { value: DataView }).value!;
+          // Parse standard BLE Body Composition Measurement (0x2A9C)
+          const flags = val.getUint16(0, true);
+          let offset = 2;
+          if (flags & 0x0001) { // imperial
+            // skip
+          } else {
+            const fatPct = val.getUint16(offset, true) * 0.1; offset += 2;
+            setBodyFat(fatPct.toFixed(1));
+            if (flags & 0x0002) { offset += 2; } // basal metabolism
+            if (flags & 0x0004) { offset += 2; } // muscle percentage
+            if (flags & 0x0008) { // muscle mass
+              const muscle = val.getUint16(offset, true) * 0.005; offset += 2;
+              setMuscleMass(muscle.toFixed(1));
+            }
+            if (flags & 0x0010) { offset += 2; } // fat free mass
+            if (flags & 0x0020) { // soft lean mass
+              offset += 2;
+            }
+            if (flags & 0x0040) { // body water mass
+              const water = val.getUint16(offset, true) * 0.005; offset += 2;
+              setBodyWater((water / (parseFloat(weight) || 1) * 100).toFixed(1));
+            }
+            if (flags & 0x0080) { // impedance
+              offset += 2;
+            }
+            if (flags & 0x0100) { // weight
+              const w = val.getUint16(offset, true) * 0.005; offset += 2;
+              setWeight(w.toFixed(1));
+            }
+            if (flags & 0x0200) { // height
+              const h = val.getUint16(offset, true) * 0.1; offset += 2;
+              setHeight(h.toFixed(0));
+            }
+          }
+          setBtMessage("✓ Datos recibidos. Revisa y guarda.");
+        });
+        handled = true;
+      } catch { /* service not found */ }
+
+      // Try Weight Scale (0x181D) as fallback
+      if (!handled) {
+        try {
+          const svc  = await server.getPrimaryService(0x181D);
+          const char = await svc.getCharacteristic(0x2A9D);
+          await char.startNotifications();
+          char.addEventListener("characteristicvaluechanged", (ev: Event) => {
+            const val = (ev.target as unknown as { value: DataView }).value!;
+            const flags = val.getUint8(0);
+            const isKg  = !(flags & 0x01);
+            if (isKg) {
+              const w = val.getUint16(1, true) * 0.005;
+              setWeight(w.toFixed(1));
+              setBtMessage("✓ Peso recibido. Ingresa los demás datos manualmente.");
+            }
+          });
+        } catch {
+          setBtMessage("Balanza conectada pero no envía datos de composición. Ingresa manualmente.");
+        }
+      }
+    } catch (e) {
+      setBtStatus("error");
+      const msg = e instanceof Error ? e.message : "";
+      if (msg.includes("cancelled") || msg.includes("user")) {
+        setBtStatus("idle");
+        setBtMessage("");
+      } else {
+        setBtMessage("No se pudo conectar. Asegúrate de que la balanza esté encendida.");
+      }
+    }
+  }, [weight]);
+
   const calcImc = (): number | null => {
     const h = parseFloat(height);
     const w = parseFloat(weight);
@@ -164,9 +272,16 @@ export function EvolutionView({ entries, onAddEntry, onDeleteEntry }: EvolutionV
     const imcVal = calcImc();
     if (!h || !w || imcVal === null || !date) return;
     const entry: MeasureEntry = { date, height: h, weight: w, imc: imcVal };
-    if (neckVal)  entry.neck  = neckVal;
-    if (waistVal) entry.waist = waistVal;
-    if (hipVal)   entry.hip   = hipVal;
+    if (neckVal)                   entry.neck       = neckVal;
+    if (waistVal)                  entry.waist      = waistVal;
+    if (hipVal)                    entry.hip        = hipVal;
+    const bfVal = parseFloat(bodyFat);     if (!isNaN(bfVal)  && bfVal > 0)  entry.bodyFat    = bfVal;
+    const mmVal = parseFloat(muscleMass);  if (!isNaN(mmVal)  && mmVal > 0)  entry.muscleMass = mmVal;
+    const bmVal = parseFloat(boneMass);    if (!isNaN(bmVal)  && bmVal > 0)  entry.boneMass   = bmVal;
+    const prVal = parseFloat(proteins);    if (!isNaN(prVal)  && prVal > 0)  entry.proteins   = prVal;
+    const vfVal = parseFloat(visceralFat); if (!isNaN(vfVal)  && vfVal > 0)  entry.visceralFat= vfVal;
+    const brVal = parseFloat(bmr);         if (!isNaN(brVal)  && brVal > 0)  entry.bmr        = brVal;
+    const bwVal = parseFloat(bodyWater);   if (!isNaN(bwVal)  && bwVal > 0)  entry.bodyWater  = bwVal;
     onAddEntry(entry);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -201,6 +316,27 @@ export function EvolutionView({ entries, onAddEntry, onDeleteEntry }: EvolutionV
         className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
       >
         <p className="text-[15px] font-semibold text-[#1A1A2E] mb-4">Registrar Medidas</p>
+
+        {/* Bluetooth button */}
+        <div className="mb-4">
+          <button
+            onClick={() => void connectScale()}
+            disabled={btStatus === "scanning" || btStatus === "connected"}
+            className="w-full py-2.5 rounded-[12px] flex items-center justify-center gap-2 text-[14px] font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-50"
+            style={{
+              background: btStatus === "connected" ? "#E8F5F0" : btStatus === "unavailable" || btStatus === "error" ? "#FEF3C7" : "#1A1A2E",
+              color: btStatus === "connected" ? "#1B6B5B" : btStatus === "unavailable" || btStatus === "error" ? "#92400E" : "#fff",
+            }}
+          >
+            {btStatus === "connected" ? <Bluetooth className="w-4 h-4" /> : btStatus === "unavailable" || btStatus === "error" ? <BluetoothOff className="w-4 h-4" /> : <Bluetooth className="w-4 h-4" />}
+            {btStatus === "scanning" ? "Buscando balanza…" : btStatus === "connected" ? "Balanza conectada" : "Conectar Balanza Huawei AH100"}
+          </button>
+          {btMessage && (
+            <p className={`text-[11px] mt-1.5 px-1 leading-relaxed ${btStatus === "connected" ? "text-[#1B6B5B]" : "text-[#6B7280]"}`}>
+              {btMessage}
+            </p>
+          )}
+        </div>
 
         <div className="mb-3">
           <label className={labelCls}>Fecha</label>
@@ -295,6 +431,45 @@ export function EvolutionView({ entries, onAddEntry, onDeleteEntry }: EvolutionV
               placeholder="105"
               className={inputCls}
             />
+          </div>
+        </div>
+
+        {/* Body Composition */}
+        <div className="flex items-center gap-2 mb-3 mt-1">
+          <Activity className="w-4 h-4 text-[#9CA3AF]" />
+          <p className="text-[13px] font-semibold text-[#9CA3AF] uppercase tracking-wide">
+            Composición corporal — opcional
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className={labelCls}>Grasa corporal (%)</label>
+            <input type="number" step="0.1" value={bodyFat} onChange={e => setBodyFat(e.target.value)} placeholder="26.6" className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Masa muscular (kg)</label>
+            <input type="number" step="0.1" value={muscleMass} onChange={e => setMuscleMass(e.target.value)} placeholder="61.9" className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Masa ósea (kg)</label>
+            <input type="number" step="0.01" value={boneMass} onChange={e => setBoneMass(e.target.value)} placeholder="3.50" className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Proteínas (%)</label>
+            <input type="number" step="0.1" value={proteins} onChange={e => setProteins(e.target.value)} placeholder="17.1" className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Grasa visceral (nivel)</label>
+            <input type="number" step="0.1" value={visceralFat} onChange={e => setVisceralFat(e.target.value)} placeholder="17.0" className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>TMB (kcal/d)</label>
+            <input type="number" value={bmr} onChange={e => setBmr(e.target.value)} placeholder="1798" className={inputCls} />
+          </div>
+          <div className="col-span-2">
+            <label className={labelCls}>Agua corporal (%)</label>
+            <input type="number" step="0.1" value={bodyWater} onChange={e => setBodyWater(e.target.value)} placeholder="52.4" className={inputCls} />
           </div>
         </div>
 
@@ -546,6 +721,16 @@ export function EvolutionView({ entries, onAddEntry, onDeleteEntry }: EvolutionV
                       <p className="text-[13px] text-[#6B7280] mt-0.5">
                         {entry.weight} kg · {entry.height} cm · IMC {entry.imc}
                       </p>
+                      {(entry.bodyFat || entry.muscleMass || entry.bmr) && (
+                        <p className="text-[12px] text-[#9CA3AF] mt-0.5">
+                          {[
+                            entry.bodyFat    ? `Grasa ${entry.bodyFat}%`     : null,
+                            entry.muscleMass ? `Músculo ${entry.muscleMass}kg` : null,
+                            entry.visceralFat ? `Visceral ${entry.visceralFat}` : null,
+                            entry.bmr        ? `TMB ${entry.bmr}kcal`         : null,
+                          ].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
                       {(entry.neck || entry.waist || entry.hip) && (
                         <p className="text-[12px] text-[#9CA3AF] mt-0.5">
                           {[

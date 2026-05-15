@@ -171,6 +171,7 @@ export default function App() {
               >
                 <WaterView
                   waterCount={state.waterCount}
+                  waterHistory={state.waterHistory}
                   onSetWater={state.setWaterCount}
                   onReset={state.resetWater}
                 />

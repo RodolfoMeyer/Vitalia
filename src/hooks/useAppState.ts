@@ -41,6 +41,13 @@ export interface MeasureEntry {
   neck?: number;   // cm — circunferencia cuello
   waist?: number;  // cm — circunferencia cintura
   hip?: number;    // cm — circunferencia cadera
+  bodyFat?: number;     // % grasa corporal
+  muscleMass?: number;  // kg masa muscular
+  boneMass?: number;    // kg masa ósea
+  proteins?: number;    // % proteínas
+  visceralFat?: number; // nivel grasa visceral
+  bmr?: number;         // kcal/d TMB (tasa metabólica basal)
+  bodyWater?: number;   // % agua corporal
 }
 
 function getTodayIndex(): number {
@@ -70,42 +77,59 @@ export function useAppState() {
   const todayISO = getTodayISO();
 
   // ---- Menu checkboxes (per day) ----
-  const [menuChecked, setMenuChecked] = useState<Record<number, boolean[]>>(() => {
-    const all = loadJSON<Record<number, boolean[]>>("vitalia_menu_checked", {});
+  const [menuChecked, setMenuChecked] = useState<Record<string, boolean[]>>(() => {
+    const raw = loadJSON<Record<string, boolean[]>>("vitalia_menu_checked", {});
+    // Migrate away from legacy numeric-key format
+    const isLegacy = Object.keys(raw).length > 0 && Object.keys(raw).every(k => /^[0-6]$/.test(k));
+    const all: Record<string, boolean[]> = isLegacy ? {} : raw;
     const storedDate = localStorage.getItem("vitalia_menu_date");
     const expectedLen = mealCount(todayIndex);
     if (storedDate !== todayISO) {
-      all[todayIndex] = new Array(expectedLen).fill(false);
+      all[todayISO] = new Array(expectedLen).fill(false);
       localStorage.setItem("vitalia_menu_date", todayISO);
       saveJSON("vitalia_menu_checked", all);
     }
-    if (!all[todayIndex] || all[todayIndex].length !== expectedLen) {
-      all[todayIndex] = new Array(expectedLen).fill(false);
+    if (!all[todayISO] || all[todayISO].length !== expectedLen) {
+      all[todayISO] = new Array(expectedLen).fill(false);
     }
     return all;
   });
 
-  const toggleMeal = useCallback((dayIndex: number, mealIndex: number) => {
+  const toggleMeal = useCallback((dayISO: string, mealIndex: number) => {
     setMenuChecked((prev) => {
       const next = { ...prev };
-      const dayChecks = [...(next[dayIndex] || new Array(mealCount(dayIndex)).fill(false))];
+      const dayLen = next[dayISO]?.length ?? mealCount(todayIndex);
+      const dayChecks = [...(next[dayISO] || new Array(dayLen).fill(false))];
       dayChecks[mealIndex] = !dayChecks[mealIndex];
-      next[dayIndex] = dayChecks;
+      next[dayISO] = dayChecks;
       saveJSON("vitalia_menu_checked", next);
       return next;
     });
-  }, []);
+  }, [todayIndex]);
 
   // ---- Water count ----
   const [waterCount, setWaterCount] = useState<number>(() => {
-    const storedDate = localStorage.getItem("vitalia_water_date");
+    const storedDate  = localStorage.getItem("vitalia_water_date");
+    const storedCount = loadJSON<number>("vitalia_water_count", 0);
+    if (storedDate && storedDate !== todayISO) {
+      // Save previous day's count to history
+      const hist = loadJSON<Record<string, number>>("vitalia_water_history", {});
+      hist[storedDate] = storedCount;
+      // Keep only last 30 days
+      const sorted = Object.entries(hist).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 30);
+      saveJSON("vitalia_water_history", Object.fromEntries(sorted));
+    }
     if (storedDate !== todayISO) {
       localStorage.setItem("vitalia_water_date", todayISO);
       localStorage.setItem("vitalia_water_count", "0");
       return 0;
     }
-    return loadJSON<number>("vitalia_water_count", 0);
+    return storedCount;
   });
+
+  const [waterHistory] = useState<Record<string, number>>(() =>
+    loadJSON<Record<string, number>>("vitalia_water_history", {})
+  );
 
   const setWaterCountPersisted = useCallback((count: number) => {
     const clamped = Math.max(0, Math.min(12, count));
@@ -123,14 +147,26 @@ export function useAppState() {
   // ---- Medications ----
   const [medsChecked, setMedsChecked] = useState<boolean[]>(() => {
     const storedDate = localStorage.getItem("vitalia_meds_date");
+    const storedChecked = loadJSON<boolean[]>("vitalia_meds_checked", new Array(medications.length).fill(false));
+    if (storedDate && storedDate !== todayISO) {
+      // Save previous day's state to history
+      const hist = loadJSON<Record<string, boolean[]>>("vitalia_meds_history", {});
+      hist[storedDate] = storedChecked;
+      const sorted = Object.entries(hist).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 30);
+      saveJSON("vitalia_meds_history", Object.fromEntries(sorted));
+    }
     if (storedDate !== todayISO) {
       localStorage.setItem("vitalia_meds_date", todayISO);
       const fresh = new Array(medications.length).fill(false);
       saveJSON("vitalia_meds_checked", fresh);
       return fresh;
     }
-    return loadJSON<boolean[]>("vitalia_meds_checked", new Array(medications.length).fill(false));
+    return storedChecked;
   });
+
+  const [medsHistory] = useState<Record<string, boolean[]>>(() =>
+    loadJSON<Record<string, boolean[]>>("vitalia_meds_history", {})
+  );
 
   const toggleMed = useCallback((index: number) => {
     setMedsChecked((prev) => {
@@ -281,7 +317,7 @@ export function useAppState() {
   }, []);
 
   // ---- Computed stats ----
-  const todayMenuChecks = menuChecked[todayIndex] || new Array(mealCount(todayIndex)).fill(false);
+  const todayMenuChecks = menuChecked[todayISO] || new Array(mealCount(todayIndex)).fill(false);
   const menuCompletedCount = todayMenuChecks.filter(Boolean).length;
   const menuTotalCount = todayMenuChecks.length;
 
@@ -311,10 +347,12 @@ export function useAppState() {
     menuTotalCount,
     // Water
     waterCount,
+    waterHistory,
     setWaterCount: setWaterCountPersisted,
     resetWater,
     // Meds (built-in)
     medsChecked,
+    medsHistory,
     toggleMed,
     medsCompletedCount,
     medsTotalCount,
