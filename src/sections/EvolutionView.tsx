@@ -6,9 +6,9 @@ import {
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine,
+  ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell,
 } from "recharts";
-import type { MeasureEntry } from "@/hooks/useAppState";
+import type { MeasureEntry, DayFoodLog } from "@/hooks/useAppState";
 
 const fadeUp = {
   initial: { opacity: 0, y: 20 },
@@ -80,6 +80,56 @@ interface EvolutionViewProps {
   onDeleteEntry: (date: string) => void;
   weightGoal: number | null;
   onSetWeightGoal: (goal: number | null) => void;
+  foodLog: Record<string, DayFoodLog>;
+  todayISO: string;
+}
+
+/* ── Semicircle gauge (velocímetro calórico) ────────────────────────────── */
+function SemicircleGauge({ value, min = -1200, max = 1200 }: { value: number; min?: number; max?: number }) {
+  const cx = 100, cy = 90, r = 76;
+  const clamp = (v: number) => Math.max(min, Math.min(max, v));
+  const toPct = (v: number) => (clamp(v) - min) / (max - min);
+
+  const pt = (p: number) => {
+    const a = Math.PI * (1 - p);
+    return { x: cx + r * Math.cos(a), y: cy - r * Math.sin(a) };
+  };
+
+  const arcD = (p1: number, p2: number, radius = r) => {
+    const s = { x: cx + radius * Math.cos(Math.PI * (1 - p1)), y: cy - radius * Math.sin(Math.PI * (1 - p1)) };
+    const e = { x: cx + radius * Math.cos(Math.PI * (1 - p2)), y: cy - radius * Math.sin(Math.PI * (1 - p2)) };
+    const large = Math.abs(p2 - p1) > 0.5 ? 1 : 0;
+    return `M ${s.x.toFixed(1)} ${s.y.toFixed(1)} A ${radius} ${radius} 0 ${large} 0 ${e.x.toFixed(1)} ${e.y.toFixed(1)}`;
+  };
+
+  const mid = (min + max) / 2;
+  const q = (max - min) / 4;
+  const zones = [
+    { from: min,       to: min + q,   color: "#EF4444" },
+    { from: min + q,   to: mid,       color: "#F97316" },
+    { from: mid,       to: min + q*3, color: "#84CC16" },
+    { from: min + q*3, to: max,       color: "#16A34A" },
+  ];
+
+  const p = toPct(value);
+  const needle = pt(p);
+  const ticks = [min, min + q, mid, min + q * 3, max];
+
+  return (
+    <svg viewBox="0 0 200 95" width="100%" style={{ maxWidth: 240, display: "block", margin: "0 auto" }}>
+      <path d={arcD(0, 1)} fill="none" stroke="#F3F4F6" strokeWidth="16" />
+      {zones.map((z, i) => (
+        <path key={i} d={arcD(toPct(z.from), toPct(z.to))} fill="none" stroke={z.color} strokeWidth="14" />
+      ))}
+      {ticks.map((tick) => {
+        const tp = pt(toPct(tick));
+        const ip = { x: cx + (r - 14) * Math.cos(Math.PI * (1 - toPct(tick))), y: cy - (r - 14) * Math.sin(Math.PI * (1 - toPct(tick))) };
+        return <line key={tick} x1={ip.x.toFixed(1)} y1={ip.y.toFixed(1)} x2={tp.x.toFixed(1)} y2={tp.y.toFixed(1)} stroke="white" strokeWidth="1.5" />;
+      })}
+      <line x1={cx} y1={cy} x2={needle.x.toFixed(1)} y2={needle.y.toFixed(1)} stroke="#1A1A2E" strokeWidth="2.5" strokeLinecap="round" />
+      <circle cx={cx} cy={cy} r="5" fill="white" stroke="#1A1A2E" strokeWidth="1.5" />
+    </svg>
+  );
 }
 
 /* ── Shared chart wrapper ───────────────────────────────────────────────── */
@@ -145,6 +195,7 @@ function MetricTile({
 ══════════════════════════════════════════════════════════════════════════ */
 export function EvolutionView({
   entries, onAddEntry, onDeleteEntry, weightGoal, onSetWeightGoal,
+  foodLog, todayISO,
 }: EvolutionViewProps) {
   const today = new Date().toISOString().split("T")[0];
   const [date,   setDate]   = useState(today);
@@ -306,6 +357,34 @@ export function EvolutionView({
     ? parseFloat((latestEntry.weight - firstEntry.weight).toFixed(1))
     : null;
   const latestImcStatus = latestEntry ? getImcStatus(latestEntry.imc) : null;
+
+  // ── Composición del cuerpo (donut) ─────────────────────────────────────
+  const hasCompFull = latestEntry &&
+    latestEntry.bodyWater != null &&
+    latestEntry.proteins  != null &&
+    latestEntry.bodyFat   != null &&
+    latestEntry.boneMass  != null;
+
+  const compData = hasCompFull ? (() => {
+    const w = latestEntry!.weight;
+    const agua = parseFloat(((latestEntry!.bodyWater! / 100) * w).toFixed(1));
+    const prot = parseFloat(((latestEntry!.proteins!  / 100) * w).toFixed(1));
+    const gras = parseFloat(((latestEntry!.bodyFat!   / 100) * w).toFixed(1));
+    const osea = parseFloat(latestEntry!.boneMass!.toFixed(2));
+    return [
+      { name: "Agua",      value: agua, color: "#3B9DD8" },
+      { name: "Proteínas", value: prot, color: "#1B6B5B" },
+      { name: "Grasa",     value: gras, color: "#E8890C" },
+      { name: "Masa ósea", value: osea, color: "#D1D5DB" },
+    ];
+  })() : null;
+
+  // ── Balance calórico ────────────────────────────────────────────────────
+  const todayKcal = Object.values(foodLog[todayISO] ?? {})
+    .reduce((sum, e) => sum + (parseInt(e.kcal || "0", 10) || 0), 0);
+  const bmrVal = latestEntry?.bmr ?? null;
+  // positive = deficit (burning > eating = good), negative = surplus (bad)
+  const calorieBalance = bmrVal != null ? bmrVal - todayKcal : null;
 
   const chartData = filtered.map((e) => ({
     label:      formatLabel(e.date, range),
@@ -519,6 +598,120 @@ export function EvolutionView({
               <MetricTile label="Proteínas" value={latestEntry.proteins.toFixed(1)} unit="%" />
             )}
           </div>
+        </motion.div>
+      )}
+
+      {/* ══ COMPOSICIÓN DEL CUERPO (donut) ══════════════════════════════ */}
+      {compData && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.08 }}
+          className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
+        >
+          <p className="text-[15px] font-semibold text-[#1A1A2E] mb-4">Composición del cuerpo</p>
+          <div className="flex items-center gap-4">
+            {/* Donut */}
+            <div className="relative flex-shrink-0" style={{ width: 130, height: 130 }}>
+              <PieChart width={130} height={130}>
+                <Pie
+                  data={compData}
+                  cx={60}
+                  cy={60}
+                  innerRadius={38}
+                  outerRadius={58}
+                  dataKey="value"
+                  strokeWidth={0}
+                >
+                  {compData.map((d, i) => (
+                    <Cell key={i} fill={d.color} />
+                  ))}
+                </Pie>
+              </PieChart>
+              {/* Center label */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <p className="text-[10px] text-[#9CA3AF] leading-none">Peso</p>
+                <p className="text-[16px] font-bold text-[#1A1A2E] leading-none mt-0.5">
+                  {latestEntry!.weight}
+                </p>
+              </div>
+            </div>
+            {/* Legend */}
+            <div className="flex-1 space-y-2.5">
+              {compData.map((d) => (
+                <div key={d.name} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: d.color }} />
+                    <span className="text-[13px] text-[#6B7280]">{d.name}</span>
+                  </div>
+                  <span className="text-[14px] font-semibold text-[#1A1A2E]">{d.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="text-[10px] text-[#D1D5DB] text-center mt-3">
+            Composición (kg) = agua + proteínas + grasa + masa ósea
+          </p>
+        </motion.div>
+      )}
+
+      {/* ══ BALANCE CALÓRICO (velocímetro) ══════════════════════════════ */}
+      {calorieBalance !== null && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.12 }}
+          className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
+        >
+          <p className="text-[15px] font-semibold text-[#1A1A2E] mb-1">Balance calórico</p>
+          <p className="text-[12px] text-[#9CA3AF] mb-3">Basado en tu TMB y el registro de hoy</p>
+
+          <SemicircleGauge value={calorieBalance} />
+
+          <div className="text-center -mt-1 mb-4">
+            <p
+              className="text-[13px] font-medium"
+              style={{ color: calorieBalance >= 0 ? "#16A34A" : "#EF4444" }}
+            >
+              {calorieBalance >= 0 ? "Déficit calórico" : "Superávit calórico"}
+            </p>
+            <p
+              className="text-[32px] font-black leading-none"
+              style={{ color: calorieBalance >= 0 ? "#16A34A" : "#EF4444" }}
+            >
+              {Math.abs(calorieBalance).toLocaleString("es-CL")}
+              <span className="text-[14px] font-medium text-[#9CA3AF] ml-1">kcal</span>
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-[#FFF5E0] rounded-[12px] p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="text-[16px]">🔥</span>
+                <p className="text-[11px] text-[#9CA3AF]">TMB (referencia)</p>
+              </div>
+              <p className="text-[18px] font-bold text-[#1A1A2E] leading-none">
+                {bmrVal!.toLocaleString("es-CL")}
+                <span className="text-[11px] font-medium text-[#9CA3AF] ml-0.5">kcal</span>
+              </p>
+            </div>
+            <div className="bg-[#E8F5F0] rounded-[12px] p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="text-[16px]">🍽️</span>
+                <p className="text-[11px] text-[#9CA3AF]">Consumidas hoy</p>
+              </div>
+              <p className="text-[18px] font-bold text-[#1A1A2E] leading-none">
+                {todayKcal.toLocaleString("es-CL")}
+                <span className="text-[11px] font-medium text-[#9CA3AF] ml-0.5">/ {bmrVal!.toLocaleString("es-CL")}</span>
+              </p>
+            </div>
+          </div>
+
+          {todayKcal === 0 && (
+            <p className="text-[11px] text-[#9CA3AF] text-center mt-3">
+              Registra tu alimentación en la pestaña Menú para ver el balance real
+            </p>
+          )}
         </motion.div>
       )}
 

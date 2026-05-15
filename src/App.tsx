@@ -226,6 +226,8 @@ export default function App() {
                   onDeleteEntry={state.deleteEvolutionEntry}
                   weightGoal={state.weightGoal}
                   onSetWeightGoal={state.setWeightGoal}
+                  foodLog={state.foodLog}
+                  todayISO={state.todayISO}
                 />
               </motion.div>
             )}
