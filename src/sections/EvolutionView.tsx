@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   TrendingUp, TrendingDown, Save, Trash2, Ruler, Bluetooth, BluetoothOff,
@@ -243,6 +243,10 @@ export function EvolutionView({
     setEditingGoal(false);
   }, [onSetWeightGoal]);
 
+  // Edit mode
+  const [editingDate, setEditingDate] = useState<string | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
+
   // Form collapsed / expanded
   // Abre el formulario por defecto si no hay entradas aún
   const [formOpen, setFormOpen] = useState(() => entries.length === 0);
@@ -369,9 +373,30 @@ export function EvolutionView({
     const bwVal = parseFloat(bodyWater);   if (!isNaN(bwVal)  && bwVal > 0)  entry.bodyWater   = bwVal;
     onAddEntry(entry);
     setSaved(true);
+    setEditingDate(null);
     setFormOpen(false);
     setTimeout(() => setSaved(false), 2000);
   };
+
+  /* ── Load entry for editing ─────────────────────────────────────────── */
+  const loadEntryForEdit = useCallback((entry: MeasureEntry) => {
+    setDate(entry.date);
+    setHeight(String(entry.height));
+    setWeight(String(entry.weight));
+    setNeck(entry.neck        != null ? String(entry.neck)        : "");
+    setWaist(entry.waist      != null ? String(entry.waist)       : "");
+    setHip(entry.hip          != null ? String(entry.hip)         : "");
+    setBodyFat(entry.bodyFat  != null ? String(entry.bodyFat)     : "");
+    setMuscleMass(entry.muscleMass  != null ? String(entry.muscleMass)  : "");
+    setBoneMass(entry.boneMass      != null ? String(entry.boneMass)    : "");
+    setProteins(entry.proteins      != null ? String(entry.proteins)    : "");
+    setVisceralFat(entry.visceralFat != null ? String(entry.visceralFat) : "");
+    setBmr(entry.bmr          != null ? String(entry.bmr)         : "");
+    setBodyWater(entry.bodyWater    != null ? String(entry.bodyWater)   : "");
+    setEditingDate(entry.date);
+    setFormOpen(true);
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+  }, []);
 
   /* ── Derived data ───────────────────────────────────────────────────── */
   const allSorted  = [...entries].sort((a, b) => a.date.localeCompare(b.date));
@@ -992,7 +1017,10 @@ export function EvolutionView({
       <motion.button
         {...fadeUp}
         transition={{ ...fadeUp.transition, delay: 0.05 }}
-        onClick={() => setFormOpen((v) => !v)}
+        onClick={() => {
+          if (formOpen) { setFormOpen(false); setEditingDate(null); }
+          else setFormOpen(true);
+        }}
         className="w-full py-3 rounded-[14px] flex items-center justify-center gap-2 text-[14px] font-semibold transition-all"
         style={{
           background: formOpen ? "#F3F4F6" : "linear-gradient(135deg, #1B6B5B 0%, #2D8B7A 100%)",
@@ -1000,12 +1028,15 @@ export function EvolutionView({
         }}
       >
         <Target className="w-4 h-4" />
-        {formOpen ? "Cancelar" : (hasAnyData ? "Registrar nueva medida" : "Registrar primera medida")}
+        {formOpen
+          ? (editingDate ? "Cancelar edición" : "Cancelar")
+          : (hasAnyData ? "Registrar nueva medida" : "Registrar primera medida")}
       </motion.button>
 
       {/* ══ FORM ════════════════════════════════════════════════════════ */}
       {formOpen && (
         <motion.div
+          ref={formRef}
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
@@ -1014,7 +1045,9 @@ export function EvolutionView({
         >
           <div className="flex items-center justify-between mb-4">
             <p className="text-[15px] font-semibold text-[#1A1A2E]">
-              {btDataReceived ? "✓ Datos de balanza — Revisar y guardar" : "Registrar Medidas"}
+              {editingDate
+                ? `Editar medida — ${new Date(editingDate + "T12:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}`
+                : btDataReceived ? "✓ Datos de balanza — Revisar y guardar" : "Registrar Medidas"}
             </p>
             {btStatus === "connected" && (
               <span className="flex items-center gap-1 text-[11px] text-[#1B6B5B] font-medium">
@@ -1166,12 +1199,12 @@ export function EvolutionView({
           >
             {saved ? (
               <motion.span initial={{ scale: 0.8 }} animate={{ scale: 1 }}>
-                ✓ Guardado
+                {editingDate ? "✓ Actualizado" : "✓ Guardado"}
               </motion.span>
             ) : (
               <>
                 <Save className="w-4 h-4" />
-                Guardar Medidas
+                {editingDate ? "Actualizar medida" : "Guardar Medidas"}
               </>
             )}
           </button>
@@ -1417,6 +1450,13 @@ export function EvolutionView({
                       >
                         {status.label}
                       </span>
+                      <button
+                        onClick={() => loadEntryForEdit(entry)}
+                        title="Editar medida"
+                        className="w-7 h-7 rounded-full bg-[#E8F5F0] flex items-center justify-center"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-[#1B6B5B]" />
+                      </button>
                       <button
                         onClick={() => {
                           if (window.confirm("¿Eliminar esta medida?")) onDeleteEntry(entry.date);
