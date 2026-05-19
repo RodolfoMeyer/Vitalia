@@ -115,7 +115,7 @@ export const medications: Medication[] = [
   },
   {
     id: "compulsine",
-    name: "Compulsine 37.5 mg",
+    name: "Compulxine 37.5 mg",
     dosage: "37.5 mg",
     timeLabel: "09:30 · Mañana",
     timeContext: "Tras el desayuno",
@@ -383,7 +383,7 @@ export const exerciseTips: Array<{ title: string; body: string }> = [
   },
   {
     title: "Horario ideal de entrenamiento",
-    body: "11:30–12:30 es el ventana óptima: después de Compulsine (09:30) y antes de la Fórmula Magistral (12:30).",
+    body: "11:30–12:30 es el ventana óptima: después de Compulxine (09:30) y antes de la Fórmula Magistral (12:30).",
   },
   {
     title: "Cuidado con la pesa rusa",
@@ -533,7 +533,7 @@ export const notificationSchedule: ScheduledNotification[] = [
   { id: "water-2030", time: "20:30", type: "water", title: "💧 Hidratación", body: "Último recordatorio de agua del día. ¿Llegaste a los 3 litros?" },
   // ── Medicamentos ─────────────────────────────────────────────────────────────
   { id: "med-eutirox",    time: "08:00", type: "medication", title: "💊 Eutirox 150 mcg",      body: "En ayunas. Solo con agua — sin café, leche ni suplementos. Espera 30 min para desayunar." },
-  { id: "med-compulsine", time: "09:30", type: "medication", title: "💊 Compulsine 37.5 mg",   body: "Tomarlo después del desayuno para mejor tolerancia." },
+  { id: "med-compulsine", time: "09:30", type: "medication", title: "💊 Compulxine 37.5 mg",   body: "Tomarlo después del desayuno para mejor tolerancia." },
   { id: "med-magistral",  time: "12:30", type: "medication", title: "💊 Fórmula Magistral",    body: "1 cápsula — separación de 4.5 h del Eutirox. Contiene Orlistat, Berberina, Magnesio y más.", startDate: "2026-05-17" },
   { id: "med-vitamina-d", time: "20:30", type: "medication", title: "💊 Vitamina D",           body: "Tomarlo con la cena — necesita grasa para absorberse bien." },
 ];

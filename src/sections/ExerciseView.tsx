@@ -544,7 +544,7 @@ export function ExerciseView({ todayIndex, exTipIndex }: ExerciseViewProps) {
                   </div>
                   <div>
                     <p className="text-[13px] font-semibold text-[#1A1A2E]">Ventana ideal: 11:30–12:30</p>
-                    <p className="text-[12px] text-[#9CA3AF]">Después de Compulsine · antes de Fórmula Magistral</p>
+                    <p className="text-[12px] text-[#9CA3AF]">Después de Compulxine · antes de Fórmula Magistral</p>
                   </div>
                 </div>
               </div>

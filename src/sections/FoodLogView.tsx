@@ -50,7 +50,7 @@ function buildAnalysis(totalKcal: number, loggedCount: number, totalMeals: numbe
     status   = { label: "Déficit Importante", color: "#3B9DD8", bg: "#EBF5FB", Icon: TrendingDown };
     summary  = `Consumiste ${totalKcal} kcal, un ${Math.round(absDeviation)}% bajo el objetivo de ${TARGET_KCAL} kcal. Con tu medicación actual esto puede ser riesgoso.`;
     insights = [
-      { type: "error", text: "Riesgo de hipoglicemia: la Compulsine necesita alimento para tolerarse." },
+      { type: "error", text: "Riesgo de hipoglicemia: la Compulxine necesita alimento para tolerarse." },
       { type: "error", text: "El déficit severo favorece pérdida de masa muscular post bypass." },
       { type: "warn",  text: "Añade un snack proteico: yogur griego, queso fresco o huevo duro." },
     ];
