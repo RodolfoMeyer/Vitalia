@@ -196,6 +196,7 @@ export default function App() {
                   onToggleCustomMed={state.toggleCustomMed}
                   onAddCustomMed={state.addCustomMed}
                   onDeleteCustomMed={state.deleteCustomMed}
+                  wakeUpTime={state.wakeUpTime}
                 />
               </motion.div>
             )}

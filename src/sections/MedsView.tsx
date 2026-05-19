@@ -1,8 +1,24 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Clock, Plus, Trash2, X, Save } from "lucide-react";
+import { Check, Clock, Plus, Trash2, X, Save, AlarmClock } from "lucide-react";
 import { medications } from "@/data/menuData";
 import type { CustomMedication } from "@/hooks/useAppState";
+
+// ── Time helpers ──────────────────────────────────────────────────────────────
+
+function addMinutes(hhmm: string, mins: number): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const total   = h * 60 + m + mins;
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, total));
+  return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
+}
+
+function formatAmPm(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const period = h < 12 ? "AM" : "PM";
+  const h12    = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
 
 function getTodayISO(): string {
   return new Date().toISOString().split("T")[0];
@@ -50,6 +66,7 @@ interface MedsViewProps {
   onToggleCustomMed: (id: string) => void;
   onAddCustomMed: (med: CustomMedication) => void;
   onDeleteCustomMed: (id: string) => void;
+  wakeUpTime: string | null;
 }
 
 export function MedsView({
@@ -62,6 +79,7 @@ export function MedsView({
   onToggleCustomMed,
   onAddCustomMed,
   onDeleteCustomMed,
+  wakeUpTime,
 }: MedsViewProps) {
   const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
   const todayISO = getTodayISO();
@@ -218,6 +236,34 @@ export function MedsView({
         )}
       </AnimatePresence>
 
+      {/* ── Wake-up schedule banner ─────────────────────────────────────── */}
+      {wakeUpTime ? (
+        <motion.div
+          variants={cardReveal}
+          className="bg-[#E8F5F0] rounded-[16px] px-4 py-3 flex items-center gap-3 mb-1"
+        >
+          <AlarmClock className="w-4 h-4 text-[#1B6B5B] flex-shrink-0" />
+          <div>
+            <p className="text-[13px] font-semibold text-[#1B6B5B]">
+              Horario calculado desde las {formatAmPm(wakeUpTime)}
+            </p>
+            <p className="text-[11px] text-[#1B6B5B]/70">
+              Los horarios se ajustan automáticamente a tu hora de despertar
+            </p>
+          </div>
+        </motion.div>
+      ) : (
+        <motion.div
+          variants={cardReveal}
+          className="bg-[#FFF5E0] rounded-[16px] px-4 py-3 flex items-center gap-3 mb-1"
+        >
+          <AlarmClock className="w-4 h-4 text-[#F5A623] flex-shrink-0" />
+          <p className="text-[12px] text-[#92400E]">
+            Registra tu hora de despertar en <strong>Inicio</strong> para ver los horarios exactos
+          </p>
+        </motion.div>
+      )}
+
       {/* ── Built-in medication cards ───────────────────────────────────── */}
       <div className="space-y-3">
         {medications.map((med, idx) => {
@@ -227,6 +273,12 @@ export function MedsView({
           const startLabel = med.startDate
             ? med.startDate.split("-").reverse().slice(0, 2).join("/")
             : null;
+
+          // Compute dynamic time label based on wake-up time
+          const computedTime  = wakeUpTime ? addMinutes(wakeUpTime, med.wakeOffsetMin) : null;
+          const displayLabel  = computedTime
+            ? `${computedTime} · ${med.timeContext}`
+            : med.timeLabel;
 
           return (
             <motion.div
@@ -243,7 +295,7 @@ export function MedsView({
                       {med.name}
                     </h3>
                     <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[12px] font-semibold ${colors.badge} ${colors.badgeText}`}>
-                      {med.timeLabel}
+                      {displayLabel}
                     </span>
                     {isUpcoming && (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#F3F4F6] text-[#9CA3AF]">

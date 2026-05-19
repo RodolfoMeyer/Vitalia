@@ -94,10 +94,12 @@ export interface Medication {
   id: string;
   name: string;
   dosage: string;
-  timeLabel: string;
+  timeLabel: string;        // fallback label when no wake-up time is known
+  timeContext: string;      // descriptive suffix shown after HH:MM (e.g. "Al despertar · En ayunas")
+  wakeOffsetMin: number;    // minutes after wake-up when this med should be taken
   instructions: string;
   color: "amber" | "teal" | "blue" | "purple";
-  startDate?: string; // ISO YYYY-MM-DD — show as "upcoming" before this date
+  startDate?: string;       // ISO YYYY-MM-DD — show as "upcoming" before this date
 }
 
 export const medications: Medication[] = [
@@ -106,6 +108,8 @@ export const medications: Medication[] = [
     name: "Eutirox 150 mcg",
     dosage: "150 mcg",
     timeLabel: "08:00 · En ayunas",
+    timeContext: "Al despertar · En ayunas",
+    wakeOffsetMin: 0,       // taken immediately on waking
     instructions: "Solo con agua. Sin café, leche ni suplementos. Esperar 30 min antes de desayunar.",
     color: "amber",
   },
@@ -114,6 +118,8 @@ export const medications: Medication[] = [
     name: "Compulsine 37.5 mg",
     dosage: "37.5 mg",
     timeLabel: "09:30 · Mañana",
+    timeContext: "Tras el desayuno",
+    wakeOffsetMin: 90,      // +30 min ayunas wait + ~60 min breakfast = 90 min
     instructions: "Después del desayuno para mejor tolerancia post bypass.",
     color: "teal",
   },
@@ -121,7 +127,9 @@ export const medications: Medication[] = [
     id: "magistral",
     name: "Fórmula Magistral",
     dosage: "1 cápsula",
-    timeLabel: "12:30",
+    timeLabel: "12:30 · Mediodía",
+    timeContext: "4.5 h después del Eutirox",
+    wakeOffsetMin: 270,     // 4.5 h = 270 min desde Eutirox (que es T+0)
     instructions: "Separación de 4.5 h del Eutirox. Contiene Topiramato, Orlistat, Berberina, Magnesio y más.",
     color: "purple",
     startDate: "2026-05-17",
@@ -131,6 +139,8 @@ export const medications: Medication[] = [
     name: "Vitamina D",
     dosage: "Según indicación",
     timeLabel: "20:30 · Noche",
+    timeContext: "Noche · Con la cena",
+    wakeOffsetMin: 750,     // 12.5 h = 750 min (cena nocturna)
     instructions: "Con la cena. Necesita grasa dietaria para absorberse correctamente.",
     color: "blue",
   },
