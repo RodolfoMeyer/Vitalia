@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Clock, Plus, Trash2, X, Save, AlarmClock } from "lucide-react";
+import { Check, Clock, Plus, Trash2, X, Save, AlarmClock, Bell, BellOff, RefreshCw } from "lucide-react";
+import { refreshPushSubscription } from "@/hooks/useNotifications";
 import { medications } from "@/data/menuData";
 import type { CustomMedication } from "@/hooks/useAppState";
 
@@ -84,6 +85,30 @@ export function MedsView({
   const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
   const todayISO = getTodayISO();
 
+  // ── Notification status ─────────────────────────────────────────────────
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
+    return Notification.permission;
+  });
+  const [pushActive,   setPushActive]   = useState(() => !!localStorage.getItem("vitalia_push_active"));
+  const [refreshing,   setRefreshing]   = useState(false);
+  const [refreshResult, setRefreshResult] = useState<"ok" | "fail" | null>(null);
+
+  useEffect(() => {
+    if ("Notification" in window) setNotifPermission(Notification.permission);
+    setPushActive(!!localStorage.getItem("vitalia_push_active"));
+  }, []);
+
+  const handleRefreshPush = async () => {
+    setRefreshing(true);
+    setRefreshResult(null);
+    const ok = await refreshPushSubscription(wakeUpTime);
+    setPushActive(ok);
+    setRefreshResult(ok ? "ok" : "fail");
+    setRefreshing(false);
+    setTimeout(() => setRefreshResult(null), 4000);
+  };
+
   // ── Add-med form state ──────────────────────────────────────────────────
   const [showForm, setShowForm] = useState(false);
   const [name,         setName]         = useState("");
@@ -128,6 +153,80 @@ export function MedsView({
           {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
         </button>
       </div>
+
+      {/* ── Notification status card ───────────────────────────────────── */}
+      <motion.div variants={cardReveal} className="bg-white rounded-[20px] p-4 shadow-[0_4px_24px_rgba(0,0,0,0.06)] mb-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
+              notifPermission === "granted" && pushActive
+                ? "bg-[#E8F5F0]"
+                : notifPermission === "denied"
+                ? "bg-[#FEE8E8]"
+                : "bg-[#FFF5E0]"
+            }`}>
+              {notifPermission === "granted" && pushActive
+                ? <Bell className="w-4 h-4 text-[#1B6B5B]" />
+                : notifPermission === "denied"
+                ? <BellOff className="w-4 h-4 text-[#E53E3E]" />
+                : <Bell className="w-4 h-4 text-[#F5A623]" />
+              }
+            </div>
+            <div>
+              <p className="text-[13px] font-semibold text-[#1A1A2E]">
+                {notifPermission === "granted" && pushActive
+                  ? "Notificaciones activas"
+                  : notifPermission === "granted" && !pushActive
+                  ? "Suscripción vencida"
+                  : notifPermission === "denied"
+                  ? "Notificaciones bloqueadas"
+                  : notifPermission === "unsupported"
+                  ? "No soportadas en este navegador"
+                  : "Notificaciones no activadas"}
+              </p>
+              <p className="text-[11px] text-[#9CA3AF]">
+                {notifPermission === "granted" && pushActive
+                  ? "Recibirás avisos aunque la app esté cerrada"
+                  : notifPermission === "granted" && !pushActive
+                  ? "Toca Renovar para recibir notificaciones de nuevo"
+                  : notifPermission === "denied"
+                  ? "Ve a Ajustes del sistema para habilitarlas"
+                  : notifPermission === "unsupported"
+                  ? "Instala la app en tu pantalla de inicio (iOS 16.4+)"
+                  : "Toca Activar para recibir recordatorios"}
+              </p>
+            </div>
+          </div>
+
+          {/* Action button */}
+          {notifPermission !== "denied" && notifPermission !== "unsupported" && (
+            <button
+              onClick={handleRefreshPush}
+              disabled={refreshing}
+              className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[12px] font-semibold transition-all ${
+                refreshResult === "ok"
+                  ? "bg-[#E8F5F0] text-[#1B6B5B]"
+                  : refreshResult === "fail"
+                  ? "bg-[#FEE8E8] text-[#E53E3E]"
+                  : "bg-[#1B6B5B] text-white"
+              } disabled:opacity-60`}
+            >
+              {refreshing ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : refreshResult === "ok" ? (
+                <>✓ Listo</>
+              ) : refreshResult === "fail" ? (
+                <>✗ Error</>
+              ) : (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  {notifPermission === "granted" ? "Renovar" : "Activar"}
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      </motion.div>
 
       {/* ── Add-med form ───────────────────────────────────────────────── */}
       <AnimatePresence>

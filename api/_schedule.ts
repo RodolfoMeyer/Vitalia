@@ -22,7 +22,7 @@ export const notificationSchedule: ScheduledNotification[] = [
 
   // Medications
   { id: "med-eutirox",    time: "08:00", title: "💊 Eutirox 150 mcg",    body: "En ayunas. Solo con agua — sin café, leche ni suplementos. Espera 30 min para desayunar." },
-  { id: "med-compulsine", time: "09:30", title: "💊 Compulsine 37.5 mg", body: "Tomarlo después del desayuno para mejor tolerancia." },
+  { id: "med-compulsine", time: "09:30", title: "💊 Compulxine 37.5 mg", body: "Tomarlo después del desayuno para mejor tolerancia." },
   { id: "med-magistral",  time: "12:30", title: "💊 Fórmula Magistral",  body: "1 cápsula — separación de 4.5 h del Eutirox. Contiene Orlistat, Berberina, Magnesio.", startDate: "2026-05-17" },
   { id: "med-vitamina-d", time: "20:30", title: "💊 Vitamina D",         body: "Tomarlo con la cena — necesita grasa para absorberse bien." },
 ];

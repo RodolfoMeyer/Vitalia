@@ -14,6 +14,18 @@ async function readGist(): Promise<Record<string, unknown>> {
   catch { return {}; }
 }
 
+async function writeGist(payload: Record<string, unknown>): Promise<void> {
+  await fetch(`https://api.github.com/gists/${process.env.GIST_ID}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `token ${process.env.GITHUB_TOKEN}`,
+      "Content-Type": "application/json",
+      "User-Agent": "Vitalia",
+    },
+    body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(payload, null, 2) } } }),
+  });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "GET" && req.method !== "POST")
     return res.status(405).json({ error: "Método no permitido" });
@@ -32,7 +44,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   webpush.setVapidDetails("mailto:rodolfo.andres.meyer@gmail.com", vapidPublic, vapidPrivate);
 
-  // Read stored subscription and wakeUp time from Gist
   const store = await readGist();
   const subscription = store.subscription as webpush.PushSubscription | null;
   if (!subscription?.endpoint)
@@ -44,12 +55,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     timeZone: "America/Santiago", hour: "2-digit", minute: "2-digit", hour12: false,
   }).format(now).replace(".", ":").replace(",", ":").padStart(5, "0");
 
-  const todayISO  = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(now);
+  const todayISO   = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(now);
   const wakeUpTime = (store[`wakeup_${todayISO}`] as string | undefined) ?? BASE_WAKE;
-  const offset    = timeToMins(wakeUpTime) - timeToMins(BASE_WAKE);
+  const offset     = timeToMins(wakeUpTime) - timeToMins(BASE_WAKE);
 
   const sent: string[]   = [];
   const errors: string[] = [];
+  let   subExpired       = false;
 
   for (const notif of notificationSchedule) {
     if (notif.startDate && todayISO < notif.startDate) continue;
@@ -57,33 +69,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const shiftedTime = offset === 0 ? notif.time : minsToHHMM(timeToMins(notif.time) + offset);
     if (shiftedTime !== chileTime) continue;
 
-    // Idempotency key stored in the Gist
     const sentKey = `sent_${notif.id}_${todayISO}`;
     if (store[sentKey]) continue;
 
     try {
       await webpush.sendNotification(subscription, JSON.stringify({ title: notif.title, body: notif.body }));
-      // Mark as sent in Gist (fire-and-forget, best-effort)
       store[sentKey] = "1";
       sent.push(notif.id);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      errors.push(`${notif.id}: ${msg}`);
+      const err = e as { statusCode?: number; body?: Buffer | string };
+      const body = err.body ? err.body.toString() : "";
+
+      // 410 = subscription expired; 400 BadDeviceToken = Apple invalid token
+      if (err.statusCode === 410 || (err.statusCode === 400 && body.includes("BadDeviceToken"))) {
+        subExpired = true;
+        errors.push(`${notif.id}: SUSCRIPCIÓN VENCIDA (${err.statusCode}) — se limpiará`);
+      } else {
+        errors.push(`${notif.id}: ${body || String(e)}`);
+      }
     }
   }
 
-  // Persist sent markers if anything was sent
-  if (sent.length > 0) {
-    await fetch(`https://api.github.com/gists/${process.env.GIST_ID}`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `token ${process.env.GITHUB_TOKEN}`,
-        "Content-Type": "application/json",
-        "User-Agent": "Vitalia",
-      },
-      body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(store, null, 2) } } }),
-    });
+  // If subscription is expired, clear it so the next app open registers a fresh one
+  if (subExpired) {
+    store.subscription = null;
+    store.sub_expired_at = new Date().toISOString();
   }
 
-  return res.status(200).json({ ok: true, time: chileTime, wakeUpTime, sent, errors });
+  // Persist if anything changed
+  if (sent.length > 0 || subExpired) {
+    await writeGist(store);
+  }
+
+  return res.status(200).json({
+    ok: true, time: chileTime, wakeUpTime, sent, errors,
+    ...(subExpired ? { warning: "Suscripción push vencida — necesita renovarse en la app" } : {}),
+  });
 }

@@ -97,9 +97,13 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return output;
 }
 
-async function subscribeToPush(wakeUpTime: string | null): Promise<void> {
+async function subscribeToPush(wakeUpTime: string | null, forceRefresh = false): Promise<void> {
   const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
-  if (!vapidKey) return; // not configured yet
+  if (!vapidKey) {
+    // No VAPID key → push can't work, clear any stale flag
+    localStorage.removeItem("vitalia_push_active");
+    return;
+  }
 
   const reg = await getSWReg();
   if (!reg) return;
@@ -107,16 +111,30 @@ async function subscribeToPush(wakeUpTime: string | null): Promise<void> {
   try {
     let sub = await reg.pushManager.getSubscription();
 
-    // Subscribe if not yet subscribed
-    if (!sub) {
+    // Force a fresh subscription:
+    // - On explicit refresh request
+    // - If no subscription exists
+    // - Once per day (to keep Apple/Google token fresh)
+    const lastSubDate = localStorage.getItem("vitalia_push_sub_date");
+    const todayISO    = getTodayISO();
+    const needsRenew  = forceRefresh || !sub || lastSubDate !== todayISO;
+
+    if (needsRenew) {
+      // Unsubscribe existing (might be stale/expired)
+      if (sub) {
+        try { await sub.unsubscribe(); } catch { /* ignore */ }
+      }
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidKey).buffer as ArrayBuffer,
       });
+      localStorage.setItem("vitalia_push_sub_date", todayISO);
     }
 
-    // Send subscription + wakeUpTime to server
-    await fetch("/api/subscribe", {
+    if (!sub) return;
+
+    // Send fresh subscription + wakeUpTime to server
+    const res = await fetch("/api/subscribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -125,8 +143,11 @@ async function subscribeToPush(wakeUpTime: string | null): Promise<void> {
       }),
     });
 
-    // Mark push as active so the in-app interval skips (avoids duplicates)
-    localStorage.setItem("vitalia_push_active", "1");
+    if (res.ok) {
+      localStorage.setItem("vitalia_push_active", "1");
+    } else {
+      localStorage.removeItem("vitalia_push_active");
+    }
   } catch (e) {
     console.warn("[Vitalia] Push subscription failed:", e);
     localStorage.removeItem("vitalia_push_active");
@@ -217,6 +238,20 @@ async function checkSchedule(): Promise<void> {
   }
 }
 
+// ── Force-refresh push subscription (callable from UI) ───────────────────────
+
+export async function refreshPushSubscription(wakeUpTime: string | null): Promise<boolean> {
+  if (!("Notification" in window)) return false;
+  const permission = await requestNotificationPermission();
+  if (permission !== "granted") return false;
+  try {
+    await subscribeToPush(wakeUpTime, true); // forceRefresh = true
+    return !!localStorage.getItem("vitalia_push_active");
+  } catch {
+    return false;
+  }
+}
+
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useNotifications(wakeUpTime: string | null = null): void {
@@ -225,13 +260,26 @@ export function useNotifications(wakeUpTime: string | null = null): void {
       .then(() => requestNotificationPermission())
       .then((permission) => {
         if (permission === "granted") {
-          void subscribeToPush(wakeUpTime);
+          void subscribeToPush(wakeUpTime); // renews daily
           void checkCatchUp();
         }
       });
 
+    // Check schedule every 30 s while app is open
     const interval = setInterval(() => { void checkSchedule(); }, 30_000);
-    return () => clearInterval(interval);
+
+    // Re-check immediately when user returns to the tab
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void checkCatchUp();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
