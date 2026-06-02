@@ -30,10 +30,11 @@ const tooltipStyle = {
 
 function getLast7Days(): string[] {
   const days: string[] = [];
+  const fmt = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" });
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    days.push(d.toISOString().split("T")[0]);
+    days.push(fmt.format(d));
   }
   return days;
 }
@@ -45,10 +46,11 @@ function shortDay(iso: string): string {
 
 function getLast30Days(): string[] {
   const days: string[] = [];
+  const fmt = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" });
   for (let i = 29; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    days.push(d.toISOString().split("T")[0]);
+    days.push(fmt.format(d));
   }
   return days;
 }

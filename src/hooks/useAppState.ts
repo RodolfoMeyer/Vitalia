@@ -55,7 +55,7 @@ function getTodayIndex(): number {
 }
 
 function getTodayISO(): string {
-  return new Date().toISOString().split("T")[0];
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(new Date());
 }
 
 function loadJSON<T>(key: string, fallback: T): T {

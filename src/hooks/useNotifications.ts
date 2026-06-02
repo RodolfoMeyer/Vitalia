@@ -5,7 +5,7 @@ import type { CustomMedication } from "@/hooks/useAppState";
 // ── Time utilities ────────────────────────────────────────────────────────────
 
 function getTodayISO(): string {
-  return new Date().toISOString().split("T")[0];
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(new Date());
 }
 
 function getCurrentHHMM(): string {
@@ -235,6 +235,31 @@ async function checkSchedule(): Promise<void> {
     localStorage.setItem(sentKey, "1");
     const body = [med.dosage, med.instructions].filter(Boolean).join(" · ");
     await fireNotification(`💊 ${med.name}`, body || "Hora de tomar tu medicamento.");
+  }
+}
+
+// ── Update breakfast time (callable from UI) ─────────────────────────────────
+
+export async function updateBreakfastTime(breakfastTime: string): Promise<void> {
+  const reg = await getSWReg();
+  if (!reg) return;
+
+  try {
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return;
+
+    const todayISO = getTodayISO();
+    await fetch("/api/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...sub.toJSON(),
+        breakfast: breakfastTime,
+        todayISO,
+      }),
+    });
+  } catch (e) {
+    console.warn("[Vitalia] Update breakfast time failed:", e);
   }
 }
 

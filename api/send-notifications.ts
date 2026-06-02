@@ -55,9 +55,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     timeZone: "America/Santiago", hour: "2-digit", minute: "2-digit", hour12: false,
   }).format(now).replace(".", ":").replace(",", ":").padStart(5, "0");
 
-  const todayISO   = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(now);
-  const wakeUpTime = (store[`wakeup_${todayISO}`] as string | undefined) ?? BASE_WAKE;
-  const offset     = timeToMins(wakeUpTime) - timeToMins(BASE_WAKE);
+  const todayISO    = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(now);
+  const wakeUpTime  = (store[`wakeup_${todayISO}`] as string | undefined) ?? BASE_WAKE;
+  const offset      = timeToMins(wakeUpTime) - timeToMins(BASE_WAKE);
+
+  // Breakfast offset (base breakfast time: 09:00)
+  const breakfastTime = (store[`breakfast_${todayISO}`] as string | undefined) ?? null;
+  const breakfastOffset = breakfastTime ? timeToMins(breakfastTime) - timeToMins("09:00") : 0;
 
   const sent: string[]   = [];
   const errors: string[] = [];
@@ -66,8 +70,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   for (const notif of notificationSchedule) {
     if (notif.startDate && todayISO < notif.startDate) continue;
 
-    const shiftedTime = offset === 0 ? notif.time : minsToHHMM(timeToMins(notif.time) + offset);
-    if (shiftedTime !== chileTime) continue;
+    // Calculate time: base + wake-up offset + (breakfast offset if applies)
+    let finalTime = notif.time;
+    finalTime = offset === 0 ? finalTime : minsToHHMM(timeToMins(finalTime) + offset);
+    if (notif.affectedByBreakfast && breakfastOffset !== 0) {
+      finalTime = minsToHHMM(timeToMins(finalTime) + breakfastOffset);
+    }
+
+    if (finalTime !== chileTime) continue;
 
     const sentKey = `sent_${notif.id}_${todayISO}`;
     if (store[sentKey]) continue;

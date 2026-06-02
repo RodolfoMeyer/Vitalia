@@ -197,7 +197,7 @@ export function EvolutionView({
   entries, onAddEntry, onDeleteEntry, weightGoal, onSetWeightGoal,
   foodLog, todayISO,
 }: EvolutionViewProps) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(new Date());
   const [date,   setDate]   = useState(today);
   // Pre-rellenar estatura desde la última entrada (no cambia)
   const [height, setHeight] = useState(() => {

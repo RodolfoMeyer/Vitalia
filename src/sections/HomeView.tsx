@@ -26,6 +26,7 @@ const BACKUP_KEYS = [
   "vitalia_custom_meds", "vitalia_custom_meds_checked", "vitalia_custom_meds_date",
   "vitalia_menu_checked", "vitalia_menu_date", "vitalia_food_log",
   "vitalia_wakeup_time", "vitalia_wakeup_date",
+  "vitalia_breakfast_time", "vitalia_breakfast_date",
   "vitalia_weight_goal",
   "vitalia_tip_idx", "vitalia_rec_idx", "vitalia_extip_idx",
 ];
@@ -38,6 +39,7 @@ interface BackupPreview {
   hasMeds: boolean;
   hasMenu: boolean;
   hasFoodLog: boolean;
+  foodLogDays: number;  // number of days with at least one logged meal
 }
 
 /** Build the timestamped filename: Vitalia-20260515-1230.json */
@@ -103,13 +105,24 @@ function parseBackup(raw: string): BackupPreview | null {
     const p = JSON.parse(raw) as Record<string, unknown>;
     const m = p._meta as Record<string, unknown> | undefined;
     if (!m || typeof m !== "object" || m.app !== "Vitalia") return null;
+
+    // Count how many days have at least one logged meal in the food log
+    let foodLogDays = 0;
+    if (p.vitalia_food_log && typeof p.vitalia_food_log === "object") {
+      const fl = p.vitalia_food_log as Record<string, Record<string, { kcal?: string; description?: string }>>;
+      foodLogDays = Object.values(fl).filter(day =>
+        Object.values(day).some(e => (e.description ?? "").trim() !== "" || (e.kcal ?? "").trim() !== "")
+      ).length;
+    }
+
     return {
       date:           typeof m.date === "string" ? m.date : new Date().toISOString(),
       evolutionCount: Array.isArray(p.vitalia_evolution) ? p.vitalia_evolution.length : 0,
       hasWater:       p.vitalia_water_history != null,
       hasMeds:        p.vitalia_meds_checked  != null,
       hasMenu:        p.vitalia_menu_checked   != null,
-      hasFoodLog:     p.vitalia_food_log       != null,
+      hasFoodLog:     foodLogDays > 0,
+      foodLogDays,
     };
   } catch {
     return null;
@@ -211,12 +224,42 @@ export function HomeView({
   const [isEditingWakeUp, setIsEditingWakeUp] = useState(false);
   const [editTime, setEditTime] = useState("07:00");
 
+  // Breakfast manual registration state
+  const [showBreakfastForm, setShowBreakfastForm] = useState(false);
+  const [selectedBreakfast, setSelectedBreakfast] = useState("09:00");
+  const [isEditingBreakfast, setIsEditingBreakfast] = useState(false);
+  const [editBreakfast, setEditBreakfast] = useState("09:00");
+  const [breakfastTime, setBreakfastTime] = useState<string | null>(() => {
+    const stored = localStorage.getItem("vitalia_breakfast_time");
+    const storedDate = localStorage.getItem("vitalia_breakfast_date");
+    const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(new Date());
+    return storedDate === today && stored ? stored : null;
+  });
+
   // Capture current time only when the user taps "Registrar"
   function openWakeUpForm() {
     const now = new Date();
     const t = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     setSelectedTime(t);
     setShowWakeUpForm(true);
+  }
+
+  // Breakfast handlers
+  function openBreakfastForm() {
+    setSelectedBreakfast(breakfastTime || "09:00");
+    setShowBreakfastForm(true);
+  }
+
+  async function handleSetBreakfast(time: string) {
+    const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(new Date());
+    localStorage.setItem("vitalia_breakfast_time", time);
+    localStorage.setItem("vitalia_breakfast_date", today);
+    setBreakfastTime(time);
+    setShowBreakfastForm(false);
+
+    // Send to server
+    const { updateBreakfastTime } = await import("@/hooks/useNotifications");
+    void updateBreakfastTime(time);
   }
 
   // ── Backup state ──────────────────────────────────────────────────
@@ -406,6 +449,156 @@ export function HomeView({
               <button
                 onClick={() => { onSetWakeUpTime(editTime); setIsEditingWakeUp(false); }}
                 className="flex-1 py-2.5 rounded-[10px] bg-white text-[#1B6B5B] text-[14px] font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+              >
+                <Check className="w-4 h-4" />
+                Guardar
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Breakfast registration ──────────────────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {!breakfastTime && !showBreakfastForm && (
+          <motion.div
+            key="breakfast-btn"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+          >
+            <button
+              onClick={openBreakfastForm}
+              className="w-full flex items-center gap-3 rounded-[16px] px-4 py-3.5 active:scale-[0.98] transition-transform shadow-[0_2px_12px_rgba(245,166,35,0.12)]"
+              style={{ background: "linear-gradient(135deg, #F5A623 0%, #F5C87A 100%)" }}
+            >
+              <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+                <ForkKnife className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="text-white font-semibold text-[15px]">Registrar hora de desayuno</p>
+                <p className="text-white/70 text-[12px]">Para ajustar medicamentos post-desayuno</p>
+              </div>
+              <Pencil className="w-4 h-4 text-white/60 flex-shrink-0" />
+            </button>
+          </motion.div>
+        )}
+
+        {!breakfastTime && showBreakfastForm && (
+          <motion.div
+            key="breakfast-form"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
+            className="rounded-[20px] p-5 shadow-[0_4px_28px_rgba(245,166,35,0.18)]"
+            style={{ background: "linear-gradient(135deg, #d4840a 0%, #F5A623 60%, #F5C87A 100%)" }}
+          >
+            <p className="text-white font-semibold text-[16px] mb-1">¿A qué hora desayunas?</p>
+            <p className="text-white/70 text-[13px] mb-4">Ajusta si es necesario y confirma</p>
+
+            <div className="bg-white/15 rounded-[14px] px-4 py-3 mb-4 flex items-center gap-3">
+              <ForkKnife className="w-4 h-4 text-white/70 flex-shrink-0" />
+              <input
+                type="time"
+                value={selectedBreakfast}
+                onChange={(e) => setSelectedBreakfast(e.target.value)}
+                className="flex-1 bg-transparent text-white text-[22px] font-semibold tracking-wider focus:outline-none"
+                style={{ colorScheme: "dark" }}
+                autoFocus
+              />
+            </div>
+
+            <div className="bg-white/10 rounded-[12px] px-4 py-3 mb-4 space-y-1.5">
+              <p className="text-white/60 text-[11px] font-semibold uppercase tracking-wide mb-2">Después del desayuno</p>
+              <div className="flex items-center gap-2">
+                <Pill className="w-3.5 h-3.5 text-[#F5C87A]" />
+                <p className="text-white/90 text-[13px]">Compulxine 37.5 mg — mejor tolerancia</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Droplets className="w-3.5 h-3.5 text-[#7DD3E8]" />
+                <p className="text-white/90 text-[13px]">Hidratación cada 1.5-2 horas</p>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowBreakfastForm(false)}
+                className="flex-1 py-3 rounded-[12px] bg-white/20 text-white text-[14px] font-semibold active:scale-[0.98] transition-transform"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { void handleSetBreakfast(selectedBreakfast); }}
+                className="flex-1 py-3 rounded-[12px] bg-white flex items-center justify-center gap-2 text-[15px] font-semibold text-[#D4840A] active:scale-[0.98] transition-transform"
+              >
+                <Check className="w-4 h-4" />
+                Confirmar
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Breakfast confirmed chip ────────────────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {breakfastTime && !isEditingBreakfast && (
+          <motion.div
+            key="breakfast-done"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#FFF5E0] rounded-[14px]"
+          >
+            <ForkKnife className="w-4 h-4 text-[#D4840A] flex-shrink-0" />
+            <p className="text-[13px] font-medium text-[#D4840A] flex-1">
+              Desayuno a las{" "}
+              <strong>{formatTime12(breakfastTime)}</strong>
+              {" "}— recordatorios ajustados
+            </p>
+            <button
+              onClick={() => { setEditBreakfast(breakfastTime); setIsEditingBreakfast(true); }}
+              className="flex-shrink-0 flex items-center gap-1 text-[12px] font-semibold text-[#D4840A]/70 bg-white/70 px-2.5 py-1 rounded-full active:scale-95 transition-transform"
+            >
+              <Pencil className="w-3 h-3" />
+              Editar
+            </button>
+          </motion.div>
+        )}
+
+        {breakfastTime && isEditingBreakfast && (
+          <motion.div
+            key="breakfast-edit"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
+            className="rounded-[18px] p-4 shadow-[0_4px_20px_rgba(245,166,35,0.15)]"
+            style={{ background: "linear-gradient(135deg, #d4840a 0%, #F5A623 100%)" }}
+          >
+            <p className="text-white/80 text-[13px] font-medium mb-3">Corregir hora de desayuno</p>
+            <div className="bg-white/15 rounded-[12px] px-4 py-3 mb-3 flex items-center gap-3">
+              <ForkKnife className="w-4 h-4 text-white/70 flex-shrink-0" />
+              <input
+                type="time"
+                value={editBreakfast}
+                onChange={(e) => setEditBreakfast(e.target.value)}
+                className="flex-1 bg-transparent text-white text-[22px] font-semibold tracking-wider focus:outline-none"
+                style={{ colorScheme: "dark" }}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsEditingBreakfast(false)}
+                className="flex-1 py-2.5 rounded-[10px] bg-white/20 text-white text-[14px] font-semibold active:scale-[0.98] transition-transform"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { void handleSetBreakfast(editBreakfast); setIsEditingBreakfast(false); }}
+                className="flex-1 py-2.5 rounded-[10px] bg-white text-[#D4840A] text-[14px] font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
               >
                 <Check className="w-4 h-4" />
                 Guardar
@@ -749,7 +942,7 @@ export function HomeView({
                   )}
                   {importPreview.hasFoodLog && (
                     <span className="text-[11px] bg-[#FFF5E0] text-[#E8890C] px-2.5 py-1 rounded-full font-medium">
-                      🔥 Calorías
+                      🔥 {importPreview.foodLogDays} {importPreview.foodLogDays === 1 ? "día" : "días"} registrados
                     </span>
                   )}
                 </div>

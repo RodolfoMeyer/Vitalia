@@ -130,15 +130,20 @@ function MealCard({ meal, entry, isOpen, onOpen, onSave, onPatch }: MealCardProp
   }, [localDesc, localKcal]);
 
   function handleSave() {
-    let kcalToSave   = localKcal.trim();
-    let isEstimated  = false;
+    let kcalToSave  = localKcal.trim();
+    let isEstimated = false;
 
     if (!kcalToSave && localDesc.trim()) {
+      // No kcal typed → try to auto-estimate from description
       const est = estimateKcal(localDesc);
       if (est !== null) {
         kcalToSave  = String(est);
         isEstimated = true;
       }
+    } else if (kcalToSave) {
+      // Normalize manually entered kcal: round to nearest integer, reject negatives
+      const parsed = Math.round(parseFloat(kcalToSave));
+      kcalToSave = (!isNaN(parsed) && parsed >= 0) ? String(parsed) : "";
     }
 
     onSave({
@@ -337,7 +342,7 @@ export function FoodLogView({ plannedMeals, dayLog, onUpdate }: Props) {
   const [openMeal, setOpenMeal] = useState<string | null>(null);
 
   const totalKcal = useMemo(
-    () => Object.values(dayLog).reduce((sum, e) => sum + (parseInt(e.kcal) || 0), 0),
+    () => Object.values(dayLog).reduce((sum, e) => sum + (Math.round(parseFloat(e.kcal)) || 0), 0),
     [dayLog],
   );
 

@@ -47,14 +47,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const wakeUpTime = typeof body.wakeUpTime === "string" ? body.wakeUpTime : "08:00";
+  const breakfastTime = typeof body.breakfast === "string" ? body.breakfast : null;
   const todayISO = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(new Date());
 
   const current = await readGist();
-  await writeGist({
-    ...current,
+  const updates: Record<string, unknown> = {
     subscription: { endpoint: body.endpoint, keys: body.keys, expirationTime: body.expirationTime ?? null },
     [`wakeup_${todayISO}`]: wakeUpTime,
-  });
+  };
+
+  // Save breakfast time if provided
+  if (breakfastTime) {
+    updates[`breakfast_${todayISO}`] = breakfastTime;
+  }
+
+  await writeGist({ ...current, ...updates });
 
   return res.status(200).json({ ok: true });
 }
