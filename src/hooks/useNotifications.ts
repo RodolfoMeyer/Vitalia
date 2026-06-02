@@ -23,12 +23,21 @@ function minutesToHHMM(mins: number): string {
   return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
 }
 
-// ── Wake-up offset ────────────────────────────────────────────────────────────
-const BASE_WAKE_UP = "08:00";
+// ── Wake-up + breakfast offsets ───────────────────────────────────────────────
+const BASE_WAKE_UP  = "08:00";
+const BASE_BREAKFAST = "09:00";
 
-function getOffset(wakeUpTime: string | null): number {
+function getWakeUpOffset(wakeUpTime: string | null): number {
   if (!wakeUpTime) return 0;
   return timeToMinutes(wakeUpTime) - timeToMinutes(BASE_WAKE_UP);
+}
+
+function getBreakfastOffset(): number {
+  const storedDate = localStorage.getItem("vitalia_breakfast_date");
+  if (storedDate !== getTodayISO()) return 0;
+  const bt = localStorage.getItem("vitalia_breakfast_time");
+  if (!bt) return 0;
+  return timeToMinutes(bt) - timeToMinutes(BASE_BREAKFAST);
 }
 
 function getWakeUpTime(): string | null {
@@ -169,14 +178,16 @@ async function checkCatchUp(): Promise<void> {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   if (localStorage.getItem("vitalia_push_active")) return; // server push handles it
 
-  const now      = new Date();
-  const nowMins  = now.getHours() * 60 + now.getMinutes();
-  const todayISO = getTodayISO();
-  const offset   = getOffset(getWakeUpTime());
+  const now             = new Date();
+  const nowMins         = now.getHours() * 60 + now.getMinutes();
+  const todayISO        = getTodayISO();
+  const wakeOffset      = getWakeUpOffset(getWakeUpTime());
+  const breakfastOffset = getBreakfastOffset();
 
   for (const notif of notificationSchedule) {
     if (notif.startDate && todayISO < notif.startDate) continue;
-    const shiftedMins = timeToMinutes(notif.time) + offset;
+    const totalOffset = wakeOffset + (notif.affectedByBreakfast ? breakfastOffset : 0);
+    const shiftedMins = timeToMinutes(notif.time) + totalOffset;
     const diff        = nowMins - shiftedMins;
     if (diff < 0 || diff > 30) continue;
 
@@ -188,7 +199,7 @@ async function checkCatchUp(): Promise<void> {
 
   const customMeds = loadCustomMeds();
   for (const med of customMeds) {
-    const shiftedMins = timeToMinutes(med.time) + offset;
+    const shiftedMins = timeToMinutes(med.time) + wakeOffset;
     const diff        = nowMins - shiftedMins;
     if (diff < 0 || diff > 30) continue;
 
@@ -206,15 +217,17 @@ async function checkSchedule(): Promise<void> {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   if (localStorage.getItem("vitalia_push_active")) return; // server push handles it
 
-  const currentTime = getCurrentHHMM();
-  const todayISO    = getTodayISO();
-  const offset      = getOffset(getWakeUpTime());
+  const currentTime     = getCurrentHHMM();
+  const todayISO        = getTodayISO();
+  const wakeOffset      = getWakeUpOffset(getWakeUpTime());
+  const breakfastOffset = getBreakfastOffset();
 
   for (const notif of notificationSchedule) {
     if (notif.startDate && todayISO < notif.startDate) continue;
-    const shiftedTime = offset === 0
+    const totalOffset = wakeOffset + (notif.affectedByBreakfast ? breakfastOffset : 0);
+    const shiftedTime = totalOffset === 0
       ? notif.time
-      : minutesToHHMM(timeToMinutes(notif.time) + offset);
+      : minutesToHHMM(timeToMinutes(notif.time) + totalOffset);
 
     if (shiftedTime !== currentTime) continue;
     const sentKey = `vitalia_notif_${notif.id}_${todayISO}`;
@@ -225,9 +238,9 @@ async function checkSchedule(): Promise<void> {
 
   const customMeds = loadCustomMeds();
   for (const med of customMeds) {
-    const shiftedTime = offset === 0
+    const shiftedTime = wakeOffset === 0
       ? med.time
-      : minutesToHHMM(timeToMinutes(med.time) + offset);
+      : minutesToHHMM(timeToMinutes(med.time) + wakeOffset);
 
     if (shiftedTime !== currentTime) continue;
     const sentKey = `vitalia_notif_custom_${med.id}_${todayISO}`;

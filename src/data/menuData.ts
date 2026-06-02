@@ -518,23 +518,24 @@ export interface ScheduledNotification {
   title: string;
   body: string;
   type: "medication" | "water";
-  startDate?: string; // ISO YYYY-MM-DD — only fire from this date onward
+  startDate?: string;           // ISO YYYY-MM-DD — only fire from this date onward
+  affectedByBreakfast?: boolean; // true = also apply breakfast-time offset
 }
 
 export const notificationSchedule: ScheduledNotification[] = [
-  // ── Agua (Mayo Clinic: ~250 ml c/1.5 h, desde las 10:00) ────────────────────
-  { id: "water-1000", time: "10:00", type: "water", title: "💧 Hidratación", body: "Hora de hidratarse — un vaso de agua." },
-  { id: "water-1130", time: "11:30", type: "water", title: "💧 Hidratación", body: "Mitad de la mañana — seguí sumando líquidos." },
-  { id: "water-1300", time: "13:00", type: "water", title: "💧 Hidratación", body: "Antes del almuerzo, un vaso de agua." },
-  { id: "water-1430", time: "14:30", type: "water", title: "💧 Hidratación", body: "Después del almuerzo — hidratate bien." },
-  { id: "water-1600", time: "16:00", type: "water", title: "💧 Hidratación", body: "Media tarde — no esperes tener sed." },
-  { id: "water-1730", time: "17:30", type: "water", title: "💧 Hidratación", body: "Objetivo: 3 litros al día — seguís sumando." },
-  { id: "water-1900", time: "19:00", type: "water", title: "💧 Hidratación", body: "Antes de la cena, un vaso de agua." },
-  { id: "water-2030", time: "20:30", type: "water", title: "💧 Hidratación", body: "Último recordatorio de agua del día. ¿Llegaste a los 3 litros?" },
+  // ── Agua (Mayo Clinic: ~250 ml c/1.5 h, desde las 10:00) ── post-breakfast ──
+  { id: "water-1000", time: "10:00", type: "water", affectedByBreakfast: true, title: "💧 Hidratación", body: "Hora de hidratarse — un vaso de agua." },
+  { id: "water-1130", time: "11:30", type: "water", affectedByBreakfast: true, title: "💧 Hidratación", body: "Mitad de la mañana — seguí sumando líquidos." },
+  { id: "water-1300", time: "13:00", type: "water", affectedByBreakfast: true, title: "💧 Hidratación", body: "Antes del almuerzo, un vaso de agua." },
+  { id: "water-1430", time: "14:30", type: "water", affectedByBreakfast: true, title: "💧 Hidratación", body: "Después del almuerzo — hidratate bien." },
+  { id: "water-1600", time: "16:00", type: "water", affectedByBreakfast: true, title: "💧 Hidratación", body: "Media tarde — no esperes tener sed." },
+  { id: "water-1730", time: "17:30", type: "water", affectedByBreakfast: true, title: "💧 Hidratación", body: "Objetivo: 3 litros al día — seguís sumando." },
+  { id: "water-1900", time: "19:00", type: "water", affectedByBreakfast: true, title: "💧 Hidratación", body: "Antes de la cena, un vaso de agua." },
+  { id: "water-2030", time: "20:30", type: "water", affectedByBreakfast: true, title: "💧 Hidratación", body: "Último recordatorio de agua del día. ¿Llegaste a los 3 litros?" },
   // ── Medicamentos ─────────────────────────────────────────────────────────────
   { id: "med-eutirox",    time: "08:00", type: "medication", title: "💊 Eutirox 150 mcg",      body: "En ayunas. Solo con agua — sin café, leche ni suplementos. Espera 30 min para desayunar." },
-  { id: "med-compulsine", time: "09:30", type: "medication", title: "💊 Compulxine 37.5 mg",   body: "Tomarlo después del desayuno para mejor tolerancia." },
-  { id: "med-magistral",  time: "12:30", type: "medication", title: "💊 Fórmula Magistral",    body: "1 cápsula — separación de 4.5 h del Eutirox. Contiene Orlistat, Berberina, Magnesio y más.", startDate: "2026-05-17" },
+  { id: "med-compulsine", time: "09:30", type: "medication", affectedByBreakfast: true,  title: "💊 Compulxine 37.5 mg",   body: "Tomarlo después del desayuno para mejor tolerancia." },
+  { id: "med-magistral",  time: "12:30", type: "medication", affectedByBreakfast: true,  title: "💊 Fórmula Magistral",    body: "1 cápsula — separación de 4.5 h del Eutirox. Contiene Orlistat, Berberina, Magnesio y más.", startDate: "2026-05-17" },
   { id: "med-vitamina-d", time: "20:30", type: "medication", title: "💊 Vitamina D",           body: "Tomarlo con la cena — necesita grasa para absorberse bien." },
 ];
 
