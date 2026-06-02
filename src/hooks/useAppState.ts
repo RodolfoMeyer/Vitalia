@@ -314,6 +314,22 @@ export function useAppState() {
     localStorage.setItem(`vitalia_notif_med-eutirox_${todayISO}`, "1");
   }, [todayISO]);
 
+  // ---- Breakfast time (daily) ----
+  // Same pattern as wakeUpTime: only restore if confirmed today, otherwise null
+  const [breakfastTime, setBreakfastTimeState] = useState<string | null>(() => {
+    const storedDate = localStorage.getItem("vitalia_breakfast_date");
+    if (storedDate === todayISO) {
+      return localStorage.getItem("vitalia_breakfast_time");
+    }
+    return null;
+  });
+
+  const setBreakfastTime = useCallback((time: string) => {
+    localStorage.setItem("vitalia_breakfast_time", time);
+    localStorage.setItem("vitalia_breakfast_date", todayISO);
+    setBreakfastTimeState(time);
+  }, [todayISO]);
+
   // ---- Rotating content indexes (change each app open) ----
   const [tipIndex]      = useState(() => getRotatingIndex("vitalia_tip_idx",  wellnessTips.length));
   const [recIndex]      = useState(() => getRotatingIndex("vitalia_rec_idx",  medicalRecommendations.length));
@@ -391,6 +407,9 @@ export function useAppState() {
     // Wake-up
     wakeUpTime,
     setWakeUpTime,
+    // Breakfast
+    breakfastTime,
+    setBreakfastTime,
     // Rotating content
     tipIndex,
     recIndex,

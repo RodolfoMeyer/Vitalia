@@ -138,6 +138,8 @@ export default function App() {
                   recIndex={state.recIndex}
                   wakeUpTime={state.wakeUpTime}
                   onSetWakeUpTime={state.setWakeUpTime}
+                  breakfastTime={state.breakfastTime}
+                  onSetBreakfastTime={state.setBreakfastTime}
                 />
               </motion.div>
             )}

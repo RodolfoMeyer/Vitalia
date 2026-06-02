@@ -176,6 +176,8 @@ interface HomeViewProps {
   recIndex: number;
   wakeUpTime: string | null;
   onSetWakeUpTime: (time: string) => void;
+  breakfastTime: string | null;
+  onSetBreakfastTime: (time: string) => void;
 }
 
 export function HomeView({
@@ -191,6 +193,8 @@ export function HomeView({
   recIndex,
   wakeUpTime,
   onSetWakeUpTime,
+  breakfastTime,
+  onSetBreakfastTime,
 }: HomeViewProps) {
   const progressPercent = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
@@ -229,12 +233,6 @@ export function HomeView({
   const [selectedBreakfast, setSelectedBreakfast] = useState("09:00");
   const [isEditingBreakfast, setIsEditingBreakfast] = useState(false);
   const [editBreakfast, setEditBreakfast] = useState("09:00");
-  const [breakfastTime, setBreakfastTime] = useState<string | null>(() => {
-    const stored = localStorage.getItem("vitalia_breakfast_time");
-    const storedDate = localStorage.getItem("vitalia_breakfast_date");
-    const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(new Date());
-    return storedDate === today && stored ? stored : null;
-  });
 
   // Capture current time only when the user taps "Registrar"
   function openWakeUpForm() {
@@ -251,11 +249,9 @@ export function HomeView({
   }
 
   async function handleSetBreakfast(time: string) {
-    const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(new Date());
-    localStorage.setItem("vitalia_breakfast_time", time);
-    localStorage.setItem("vitalia_breakfast_date", today);
-    setBreakfastTime(time);
+    onSetBreakfastTime(time);
     setShowBreakfastForm(false);
+    setIsEditingBreakfast(false);
 
     // Send to server
     const { updateBreakfastTime } = await import("@/hooks/useNotifications");
