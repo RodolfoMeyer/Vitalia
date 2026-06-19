@@ -91,6 +91,7 @@ interface MedsViewProps {
   onDeleteCustomMed: (id: string) => void;
   wakeUpTime: string | null;
   breakfastTime: string | null;
+  medCheckTimes: Record<string, string>;
   medOverrides: Record<string, MedOverride>;
   onUpdateBuiltinMed: (id: string, override: MedOverride) => void;
   onResetBuiltinMed: (id: string) => void;
@@ -109,6 +110,7 @@ export function MedsView({
   onDeleteCustomMed,
   wakeUpTime,
   breakfastTime,
+  medCheckTimes,
   medOverrides,
   onUpdateBuiltinMed,
   onResetBuiltinMed,
@@ -553,12 +555,39 @@ export function MedsView({
             ? med.startDate.split("-").reverse().slice(0, 2).join("/")
             : null;
 
-          // Time: fixed override wins, then wake-up computation, then fallback label
-          const computedTime = wakeUpTime ? addMinutes(wakeUpTime, med.wakeOffsetMin) : null;
+          // Compute smart time per-medication logic
+          let computedTime: string | null = null;
+          let timeContext = med.timeContext;
+
+          if (med.id === "compulsine") {
+            // Compulxine: after breakfast (breakfastTime + 30 min to finish eating)
+            if (breakfastTime) {
+              computedTime = addMinutes(breakfastTime, 30);
+              timeContext = `30 min después del desayuno (${breakfastTime})`;
+            } else {
+              computedTime = wakeUpTime ? addMinutes(wakeUpTime, med.wakeOffsetMin) : null;
+            }
+          } else if (med.id === "magistral") {
+            // Magistral: 4.5h after Eutirox was actually taken (checked)
+            const eutiroxCheckTime = medCheckTimes["eutirox"];
+            if (eutiroxCheckTime) {
+              computedTime = addMinutes(eutiroxCheckTime, 270);
+              timeContext = `4.5 h desde toma del Eutirox (${eutiroxCheckTime})`;
+            } else {
+              // Fallback: 4.5h from wake
+              computedTime = wakeUpTime ? addMinutes(wakeUpTime, med.wakeOffsetMin) : null;
+              timeContext = medsChecked[0]
+                ? "4.5 h desde el Eutirox"
+                : "Marca el Eutirox para ver hora exacta";
+            }
+          } else {
+            computedTime = wakeUpTime ? addMinutes(wakeUpTime, med.wakeOffsetMin) : null;
+          }
+
           const displayLabel = override.timeFixed
             ? `${override.timeFixed} · Hora fija`
             : computedTime
-            ? `${computedTime} · ${med.timeContext}`
+            ? `${computedTime} · ${timeContext}`
             : med.timeLabel;
 
           return (

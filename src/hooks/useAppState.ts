@@ -275,12 +275,39 @@ export function useAppState() {
     loadJSON<Record<string, boolean[]>>("vitalia_meds_history", {})
   );
 
+  // Tracks HH:MM when each built-in med was checked today (medId → "HH:MM")
+  const [medCheckTimes, setMedCheckTimes] = useState<Record<string, string>>(() => {
+    const storedDate = localStorage.getItem("vitalia_med_check_times_date");
+    if (storedDate !== todayISO) return {};
+    return loadJSON<Record<string, string>>("vitalia_med_check_times", {});
+  });
+
   const toggleMed = useCallback((index: number) => {
+    const now = new Date();
+    const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const medId = medications[index]?.id;
+
     setMedsChecked((prev) => {
       const next = [...prev];
       next[index] = !next[index];
       saveJSON("vitalia_meds_checked", next);
       localStorage.setItem("vitalia_meds_date", todayISO);
+
+      // Record or clear check time
+      if (medId) {
+        setMedCheckTimes((prevTimes) => {
+          const nextTimes = { ...prevTimes };
+          if (next[index]) {
+            nextTimes[medId] = currentTime;
+          } else {
+            delete nextTimes[medId];
+          }
+          saveJSON("vitalia_med_check_times", nextTimes);
+          localStorage.setItem("vitalia_med_check_times_date", todayISO);
+          return nextTimes;
+        });
+      }
+
       return next;
     });
   }, [todayISO]);
@@ -530,6 +557,7 @@ export function useAppState() {
     // Meds (built-in)
     medsChecked,
     medsHistory,
+    medCheckTimes,
     toggleMed,
     medsCompletedCount,
     medsTotalCount,

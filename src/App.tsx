@@ -211,6 +211,7 @@ export default function App() {
                   onDeleteCustomMed={state.deleteCustomMed}
                   wakeUpTime={state.wakeUpTime}
                   breakfastTime={state.breakfastTime}
+                  medCheckTimes={state.medCheckTimes}
                   medOverrides={state.medOverrides}
                   onUpdateBuiltinMed={state.updateBuiltinMed}
                   onResetBuiltinMed={state.resetBuiltinMed}
