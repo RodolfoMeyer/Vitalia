@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
-import { medications, weekMenu, wellnessTips, medicalRecommendations, exerciseTips } from "@/data/menuData";
+import { medications, weekMenu, thyroidWeekMenu, thyroidFoodNotes as defaultThyroidNotes, wellnessTips, medicalRecommendations, exerciseTips } from "@/data/menuData";
+import type { Meal, DayMenu } from "@/data/menuData";
 
 const mealCount = (dayIdx: number) => weekMenu[dayIdx]?.meals.length ?? 5;
 
@@ -109,6 +110,101 @@ export function useAppState() {
       return next;
     });
   }, [todayIndex]);
+
+  // ---- Custom menus (editable) ----
+  const [customWeekMenu, setCustomWeekMenuState] = useState<DayMenu[]>(() =>
+    loadJSON<DayMenu[]>("vitalia_custom_week_menu", weekMenu)
+  );
+
+  const [customThyroidMenu, setCustomThyroidMenuState] = useState<DayMenu[]>(() =>
+    loadJSON<DayMenu[]>("vitalia_custom_thyroid_menu", thyroidWeekMenu)
+  );
+
+  const [customThyroidNotes, setCustomThyroidNotesState] = useState<string[]>(() =>
+    loadJSON<string[]>("vitalia_custom_thyroid_notes", defaultThyroidNotes)
+  );
+
+  const updateMeal = useCallback((menuType: "plan" | "thyroid", dayIdx: number, mealIdx: number, meal: Meal) => {
+    if (menuType === "plan") {
+      setCustomWeekMenuState(prev => {
+        const next = prev.map((day, i) => i !== dayIdx ? day : { ...day, meals: day.meals.map((m, j) => j !== mealIdx ? m : meal) });
+        saveJSON("vitalia_custom_week_menu", next);
+        return next;
+      });
+    } else {
+      setCustomThyroidMenuState(prev => {
+        const next = prev.map((day, i) => i !== dayIdx ? day : { ...day, meals: day.meals.map((m, j) => j !== mealIdx ? m : meal) });
+        saveJSON("vitalia_custom_thyroid_menu", next);
+        return next;
+      });
+    }
+  }, []);
+
+  const addMeal = useCallback((menuType: "plan" | "thyroid", dayIdx: number, meal: Meal) => {
+    if (menuType === "plan") {
+      setCustomWeekMenuState(prev => {
+        const next = prev.map((day, i) => i !== dayIdx ? day : { ...day, meals: [...day.meals, meal] });
+        saveJSON("vitalia_custom_week_menu", next);
+        return next;
+      });
+    } else {
+      setCustomThyroidMenuState(prev => {
+        const next = prev.map((day, i) => i !== dayIdx ? day : { ...day, meals: [...day.meals, meal] });
+        saveJSON("vitalia_custom_thyroid_menu", next);
+        return next;
+      });
+    }
+  }, []);
+
+  const deleteMeal = useCallback((menuType: "plan" | "thyroid", dayIdx: number, mealIdx: number) => {
+    if (menuType === "plan") {
+      setCustomWeekMenuState(prev => {
+        const next = prev.map((day, i) => i !== dayIdx ? day : { ...day, meals: day.meals.filter((_, j) => j !== mealIdx) });
+        saveJSON("vitalia_custom_week_menu", next);
+        return next;
+      });
+    } else {
+      setCustomThyroidMenuState(prev => {
+        const next = prev.map((day, i) => i !== dayIdx ? day : { ...day, meals: day.meals.filter((_, j) => j !== mealIdx) });
+        saveJSON("vitalia_custom_thyroid_menu", next);
+        return next;
+      });
+    }
+  }, []);
+
+  const resetMenu = useCallback((menuType: "plan" | "thyroid") => {
+    if (menuType === "plan") {
+      setCustomWeekMenuState(weekMenu);
+      saveJSON("vitalia_custom_week_menu", weekMenu);
+    } else {
+      setCustomThyroidMenuState(thyroidWeekMenu);
+      saveJSON("vitalia_custom_thyroid_menu", thyroidWeekMenu);
+    }
+  }, []);
+
+  const updateThyroidNote = useCallback((idx: number, text: string) => {
+    setCustomThyroidNotesState(prev => {
+      const next = prev.map((n, i) => i === idx ? text : n);
+      saveJSON("vitalia_custom_thyroid_notes", next);
+      return next;
+    });
+  }, []);
+
+  const addThyroidNote = useCallback((text: string) => {
+    setCustomThyroidNotesState(prev => {
+      const next = [...prev, text];
+      saveJSON("vitalia_custom_thyroid_notes", next);
+      return next;
+    });
+  }, []);
+
+  const deleteThyroidNote = useCallback((idx: number) => {
+    setCustomThyroidNotesState(prev => {
+      const next = prev.filter((_, i) => i !== idx);
+      saveJSON("vitalia_custom_thyroid_notes", next);
+      return next;
+    });
+  }, []);
 
   // ---- Water count ----
   const [waterCount, setWaterCount] = useState<number>(() => {
@@ -358,9 +454,9 @@ export function useAppState() {
   }, []);
 
   // ---- Computed stats ----
-  const todayMenuChecks = menuChecked[todayISO] || new Array(mealCount(todayIndex)).fill(false);
+  const todayMenuChecks = menuChecked[todayISO] || new Array(customWeekMenu[todayIndex]?.meals.length ?? 5).fill(false);
   const menuCompletedCount = todayMenuChecks.filter(Boolean).length;
-  const menuTotalCount = todayMenuChecks.length;
+  const menuTotalCount = customWeekMenu[todayIndex]?.meals.length ?? todayMenuChecks.length;
 
   // Only count medications that are already active (startDate reached or no startDate)
   const activeMedIndices = medications
@@ -386,6 +482,16 @@ export function useAppState() {
     toggleMeal,
     menuCompletedCount,
     menuTotalCount,
+    customWeekMenu,
+    customThyroidMenu,
+    customThyroidNotes,
+    updateMeal,
+    addMeal,
+    deleteMeal,
+    resetMenu,
+    updateThyroidNote,
+    addThyroidNote,
+    deleteThyroidNote,
     // Water
     waterCount,
     waterHistory,

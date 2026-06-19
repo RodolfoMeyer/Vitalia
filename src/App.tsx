@@ -159,6 +159,16 @@ export default function App() {
                   onToggleMeal={state.toggleMeal}
                   foodLog={state.foodLog}
                   onUpdateFoodLog={state.updateFoodLogEntry}
+                  customWeekMenu={state.customWeekMenu}
+                  customThyroidMenu={state.customThyroidMenu}
+                  customThyroidNotes={state.customThyroidNotes}
+                  onUpdateMeal={state.updateMeal}
+                  onAddMeal={state.addMeal}
+                  onDeleteMeal={state.deleteMeal}
+                  onResetMenu={state.resetMenu}
+                  onUpdateThyroidNote={state.updateThyroidNote}
+                  onAddThyroidNote={state.addThyroidNote}
+                  onDeleteThyroidNote={state.deleteThyroidNote}
                 />
               </motion.div>
             )}
