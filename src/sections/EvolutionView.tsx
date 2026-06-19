@@ -2,8 +2,10 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   TrendingUp, TrendingDown, Save, Trash2, Ruler, Bluetooth, BluetoothOff,
-  Activity, Target, Edit3, Check,
+  Activity, Target, Edit3, Check, FileDown,
 } from "lucide-react";
+import { EvolutionPrintView } from "./EvolutionPrintView";
+import { exportEvolutionPdf } from "@/utils/exportEvolutionPdf";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell,
@@ -227,6 +229,24 @@ export function EvolutionView({
   const [editingGoal, setEditingGoal] = useState(false);
   const [goalInput,   setGoalInput]   = useState(weightGoal ? String(weightGoal) : "73");
   const [goalSaved,   setGoalSaved]   = useState(false);
+
+  // PDF export
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [showPrint,  setShowPrint]  = useState(false);
+
+  const handleExportPdf = useCallback(async () => {
+    setPdfLoading(true);
+    setShowPrint(true);
+    // Give recharts time to render off-screen
+    await new Promise((r) => setTimeout(r, 1200));
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      await exportEvolutionPdf("vitalia-pdf-content", `Vitalia_Evolución_${today}.pdf`);
+    } finally {
+      setShowPrint(false);
+      setPdfLoading(false);
+    }
+  }, []);
 
   // Sync goalInput when weightGoal prop changes (e.g. after backup restore)
   useEffect(() => {
@@ -470,7 +490,39 @@ export function EvolutionView({
   ════════════════════════════════════════════════════════════════════ */
   return (
     <div className="px-5 pt-6 pb-28 space-y-5">
-      <h2 className="text-2xl font-bold text-[#1A1A2E]">Evolución</h2>
+      {/* Hidden print view for PDF capture */}
+      {showPrint && (
+        <div style={{ position: "fixed", left: -9999, top: 0, zIndex: -1, pointerEvents: "none" }}>
+          <EvolutionPrintView entries={entries} weightGoal={weightGoal} />
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-[#1A1A2E]">Evolución</h2>
+        {entries.length > 0 && (
+          <button
+            onClick={handleExportPdf}
+            disabled={pdfLoading}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-[12px] text-[13px] font-semibold transition-all active:scale-95"
+            style={{
+              background: pdfLoading ? "#E5E7EB" : "#E8F5F0",
+              color: pdfLoading ? "#9CA3AF" : "#1B6B5B",
+            }}
+          >
+            {pdfLoading ? (
+              <>
+                <span className="w-4 h-4 border-2 border-[#1B6B5B]/30 border-t-[#1B6B5B] rounded-full animate-spin" />
+                Generando…
+              </>
+            ) : (
+              <>
+                <FileDown className="w-4 h-4" />
+                Exportar PDF
+              </>
+            )}
+          </button>
+        )}
+      </div>
 
       {/* ══ DASHBOARD: última medida (estilo Huawei Health) ══════════════ */}
       {latestEntry && latestImcStatus && (
