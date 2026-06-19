@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Clock, Plus, Trash2, X, Save, AlarmClock, Bell, BellOff, RefreshCw } from "lucide-react";
+import { Check, Clock, Plus, Trash2, X, Save, AlarmClock, Bell, BellOff, RefreshCw, Coffee, Sunrise } from "lucide-react";
+import type { MedScheduleMode } from "@/hooks/useAppState";
 import { refreshPushSubscription } from "@/hooks/useNotifications";
 import { medications } from "@/data/menuData";
 import type { CustomMedication } from "@/hooks/useAppState";
@@ -12,6 +13,25 @@ function addMinutes(hhmm: string, mins: number): string {
   const total   = h * 60 + m + mins;
   const clamped = Math.max(0, Math.min(23 * 60 + 59, total));
   return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
+}
+
+function toMins(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function computeCustomMedTime(
+  baseTime: string,
+  mode: MedScheduleMode | undefined,
+  wakeUpTime: string | null,
+  breakfastTime: string | null,
+): string {
+  if (!mode || mode === "fixed") return baseTime;
+  const wakeOffset = wakeUpTime ? toMins(wakeUpTime) - toMins("08:00") : 0;
+  if (mode === "wake_relative") return addMinutes(baseTime, wakeOffset);
+  // breakfast_relative
+  const breakfastOffset = breakfastTime ? toMins(breakfastTime) - toMins("09:00") : 0;
+  return addMinutes(baseTime, wakeOffset + breakfastOffset);
 }
 
 function formatAmPm(hhmm: string): string {
@@ -68,6 +88,7 @@ interface MedsViewProps {
   onAddCustomMed: (med: CustomMedication) => void;
   onDeleteCustomMed: (id: string) => void;
   wakeUpTime: string | null;
+  breakfastTime: string | null;
 }
 
 export function MedsView({
@@ -81,6 +102,7 @@ export function MedsView({
   onAddCustomMed,
   onDeleteCustomMed,
   wakeUpTime,
+  breakfastTime,
 }: MedsViewProps) {
   const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
   const todayISO = getTodayISO();
@@ -110,25 +132,29 @@ export function MedsView({
   };
 
   // ── Add-med form state ──────────────────────────────────────────────────
-  const [showForm, setShowForm] = useState(false);
-  const [name,         setName]         = useState("");
-  const [dosage,       setDosage]       = useState("");
-  const [time,         setTime]         = useState("08:00");
-  const [instructions, setInstructions] = useState("");
-  const [color,        setColor]        = useState<CustomMedication["color"]>("blue");
-  const [saved,        setSaved]        = useState(false);
+  const [showForm,      setShowForm]      = useState(false);
+  const [name,          setName]          = useState("");
+  const [dosage,        setDosage]        = useState("");
+  const [time,          setTime]          = useState("08:00");
+  const [instructions,  setInstructions]  = useState("");
+  const [color,         setColor]         = useState<CustomMedication["color"]>("blue");
+  const [scheduleMode,  setScheduleMode]  = useState<MedScheduleMode>("fixed");
+  const [saved,         setSaved]         = useState(false);
 
   const canSave = name.trim().length > 0 && dosage.trim().length > 0 && time.length > 0;
+
+  // Preview of the calculated notification time for this form's current settings
+  const formPreviewTime = computeCustomMedTime(time, scheduleMode, wakeUpTime, breakfastTime);
 
   const handleSave = () => {
     if (!canSave) return;
     const id = `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    onAddCustomMed({ id, name: name.trim(), dosage: dosage.trim(), time, instructions: instructions.trim(), color });
+    onAddCustomMed({ id, name: name.trim(), dosage: dosage.trim(), time, instructions: instructions.trim(), color, scheduleMode });
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
       setShowForm(false);
-      setName(""); setDosage(""); setTime("08:00"); setInstructions(""); setColor("blue");
+      setName(""); setDosage(""); setTime("08:00"); setInstructions(""); setColor("blue"); setScheduleMode("fixed");
     }, 1000);
   };
 
@@ -266,18 +292,59 @@ export function MedsView({
                 </div>
               </div>
 
-              {/* Horario */}
+              {/* Modo de programación */}
               <div className="mb-3">
-                <label className={labelCls}>Horario *</label>
+                <label className={labelCls}>¿Cuándo se toma?</label>
+                <div className="flex flex-col gap-2">
+                  {[
+                    { mode: "fixed" as MedScheduleMode, icon: <Clock className="w-4 h-4" />, label: "Hora fija", desc: "Siempre a la misma hora" },
+                    { mode: "wake_relative" as MedScheduleMode, icon: <Sunrise className="w-4 h-4" />, label: "Relativo al despertar", desc: "Se ajusta según tu hora de despertar" },
+                    { mode: "breakfast_relative" as MedScheduleMode, icon: <Coffee className="w-4 h-4" />, label: "Con/después del desayuno", desc: "Se ajusta según tu hora de desayuno" },
+                  ].map(({ mode, icon, label, desc }) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setScheduleMode(mode)}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-[10px] border text-left transition-all ${
+                        scheduleMode === mode
+                          ? "border-[#1B6B5B] bg-[#E8F5F0]"
+                          : "border-[#E5E7EB] bg-[#F9FAFB]"
+                      }`}
+                    >
+                      <span className={scheduleMode === mode ? "text-[#1B6B5B]" : "text-[#9CA3AF]"}>{icon}</span>
+                      <div>
+                        <p className={`text-[13px] font-semibold ${scheduleMode === mode ? "text-[#1B6B5B]" : "text-[#1A1A2E]"}`}>{label}</p>
+                        <p className="text-[11px] text-[#9CA3AF]">{desc}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Horario base */}
+              <div className="mb-3">
+                <label className={labelCls}>
+                  {scheduleMode === "fixed" ? "Hora de notificación *" :
+                   scheduleMode === "wake_relative" ? "Hora base (relativa al despertar 08:00) *" :
+                   "Hora base (relativa al desayuno 09:00) *"}
+                </label>
                 <input
                   type="time"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
                   className={inputCls}
                 />
-                <p className="text-[11px] text-[#9CA3AF] mt-1">
-                  Se programará una notificación a esta hora cada día.
-                </p>
+                {/* Preview de hora calculada */}
+                {scheduleMode !== "fixed" && (
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <Bell className="w-3 h-3 text-[#1B6B5B]" />
+                    <p className="text-[11px] text-[#1B6B5B] font-medium">
+                      {scheduleMode === "wake_relative" && !wakeUpTime ? "Registra tu hora de despertar en Inicio para ver la hora exacta" :
+                       scheduleMode === "breakfast_relative" && !breakfastTime ? "Registra tu hora de desayuno en Inicio para ver la hora exacta" :
+                       `Notificación hoy a las ${formPreviewTime}`}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Instrucciones */}
@@ -431,12 +498,16 @@ export function MedsView({
         {/* ── Custom medication cards ─────────────────────────────────── */}
         <AnimatePresence>
           {customMeds.map((med) => {
-            const isChecked = customMedsChecked[med.id] || false;
-            const colors    = colorClasses[med.color] ?? colorClasses.blue;
-            const [hh]  = med.time.split(":");
-            const h = parseInt(hh, 10);
-            const period = h < 12 ? "Mañana" : h < 17 ? "Tarde" : "Noche";
-            const timeLabel = `${med.time} · ${period}`;
+            const isChecked   = customMedsChecked[med.id] || false;
+            const colors      = colorClasses[med.color] ?? colorClasses.blue;
+            const realTime    = computeCustomMedTime(med.time, med.scheduleMode, wakeUpTime, breakfastTime);
+            const [hh]        = realTime.split(":");
+            const h           = parseInt(hh, 10);
+            const period      = h < 12 ? "Mañana" : h < 17 ? "Tarde" : "Noche";
+            const modeLabel   = med.scheduleMode === "wake_relative" ? " · relativo al despertar"
+                              : med.scheduleMode === "breakfast_relative" ? " · post-desayuno"
+                              : "";
+            const timeLabel   = `${realTime}${modeLabel} · ${period}`;
 
             return (
               <motion.div

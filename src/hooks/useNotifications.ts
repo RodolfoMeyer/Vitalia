@@ -40,6 +40,17 @@ function getBreakfastOffset(): number {
   return timeToMinutes(bt) - timeToMinutes(BASE_BREAKFAST);
 }
 
+// Returns the total minutes offset for a custom med based on its scheduleMode
+function getCustomMedOffset(
+  mode: string | undefined,
+  wakeOffset: number,
+  breakfastOffset: number
+): number {
+  if (mode === "wake_relative") return wakeOffset;
+  if (mode === "breakfast_relative") return wakeOffset + breakfastOffset;
+  return 0; // "fixed" or legacy (no mode)
+}
+
 function getWakeUpTime(): string | null {
   const storedDate = localStorage.getItem("vitalia_wakeup_date");
   if (storedDate !== getTodayISO()) return null;
@@ -199,7 +210,8 @@ async function checkCatchUp(): Promise<void> {
 
   const customMeds = loadCustomMeds();
   for (const med of customMeds) {
-    const shiftedMins = timeToMinutes(med.time) + wakeOffset;
+    const totalOffset = getCustomMedOffset(med.scheduleMode, wakeOffset, breakfastOffset);
+    const shiftedMins = timeToMinutes(med.time) + totalOffset;
     const diff        = nowMins - shiftedMins;
     if (diff < 0 || diff > 30) continue;
 
@@ -238,9 +250,10 @@ async function checkSchedule(): Promise<void> {
 
   const customMeds = loadCustomMeds();
   for (const med of customMeds) {
-    const shiftedTime = wakeOffset === 0
+    const totalOffset = getCustomMedOffset(med.scheduleMode, wakeOffset, breakfastOffset);
+    const shiftedTime = totalOffset === 0
       ? med.time
-      : minutesToHHMM(timeToMinutes(med.time) + wakeOffset);
+      : minutesToHHMM(timeToMinutes(med.time) + totalOffset);
 
     if (shiftedTime !== currentTime) continue;
     const sentKey = `vitalia_notif_custom_${med.id}_${todayISO}`;

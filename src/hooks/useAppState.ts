@@ -16,13 +16,16 @@ function getRotatingIndex(key: string, length: number): number {
   return parseInt(localStorage.getItem(key) ?? "0", 10);
 }
 
+export type MedScheduleMode = "fixed" | "wake_relative" | "breakfast_relative";
+
 export interface CustomMedication {
   id: string;
   name: string;
   dosage: string;
-  time: string;         // HH:MM 24h
+  time: string;              // HH:MM 24h base (interpreted per scheduleMode)
   instructions: string;
   color: "amber" | "teal" | "blue" | "purple";
+  scheduleMode?: MedScheduleMode; // default "fixed" for legacy entries
 }
 
 export interface FoodLogEntry {
