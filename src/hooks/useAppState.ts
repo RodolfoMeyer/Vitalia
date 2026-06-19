@@ -19,6 +19,14 @@ function getRotatingIndex(key: string, length: number): number {
 
 export type MedScheduleMode = "fixed" | "wake_relative" | "breakfast_relative";
 
+export interface MedOverride {
+  name?: string;
+  dosage?: string;
+  instructions?: string;
+  color?: "amber" | "teal" | "blue" | "purple";
+  timeFixed?: string; // HH:MM — overrides wakeOffsetMin when set
+}
+
 export interface CustomMedication {
   id: string;
   name: string;
@@ -331,6 +339,28 @@ export function useAppState() {
     });
   }, [todayISO]);
 
+  // ---- Built-in medication overrides ----
+  const [medOverrides, setMedOverrides] = useState<Record<string, MedOverride>>(() =>
+    loadJSON<Record<string, MedOverride>>("vitalia_med_overrides", {})
+  );
+
+  const updateBuiltinMed = useCallback((id: string, override: MedOverride) => {
+    setMedOverrides((prev) => {
+      const next = { ...prev, [id]: override };
+      saveJSON("vitalia_med_overrides", next);
+      return next;
+    });
+  }, []);
+
+  const resetBuiltinMed = useCallback((id: string) => {
+    setMedOverrides((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      saveJSON("vitalia_med_overrides", next);
+      return next;
+    });
+  }, []);
+
   // ---- Weight goal ----
   const [weightGoal, setWeightGoalState] = useState<number | null>(() => {
     const v = localStorage.getItem("vitalia_weight_goal");
@@ -510,6 +540,10 @@ export function useAppState() {
     editCustomMed,
     deleteCustomMed,
     toggleCustomMed,
+    // Meds (builtin overrides)
+    medOverrides,
+    updateBuiltinMed,
+    resetBuiltinMed,
     // Evolution
     evolutionEntries,
     addEvolutionEntry,

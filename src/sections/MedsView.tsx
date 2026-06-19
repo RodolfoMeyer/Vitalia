@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Clock, Plus, Trash2, X, Save, AlarmClock, Bell, BellOff, RefreshCw, Coffee, Sunrise, Pencil } from "lucide-react";
-import type { MedScheduleMode } from "@/hooks/useAppState";
+import type { MedScheduleMode, MedOverride } from "@/hooks/useAppState";
 import { refreshPushSubscription } from "@/hooks/useNotifications";
 import { medications } from "@/data/menuData";
+import type { Medication } from "@/data/menuData";
 import type { CustomMedication } from "@/hooks/useAppState";
 
 // ── Time helpers ──────────────────────────────────────────────────────────────
@@ -90,6 +91,9 @@ interface MedsViewProps {
   onDeleteCustomMed: (id: string) => void;
   wakeUpTime: string | null;
   breakfastTime: string | null;
+  medOverrides: Record<string, MedOverride>;
+  onUpdateBuiltinMed: (id: string, override: MedOverride) => void;
+  onResetBuiltinMed: (id: string) => void;
 }
 
 export function MedsView({
@@ -105,6 +109,9 @@ export function MedsView({
   onDeleteCustomMed,
   wakeUpTime,
   breakfastTime,
+  medOverrides,
+  onUpdateBuiltinMed,
+  onResetBuiltinMed,
 }: MedsViewProps) {
   const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
   const todayISO = getTodayISO();
@@ -144,14 +151,19 @@ export function MedsView({
   const [scheduleMode,  setScheduleMode]  = useState<MedScheduleMode>("fixed");
   const [saved,         setSaved]         = useState(false);
 
+  // State for editing built-in meds
+  const [editingBuiltinId, setEditingBuiltinId] = useState<string | null>(null);
+
   const canSave = name.trim().length > 0 && dosage.trim().length > 0 && time.length > 0;
   const isEditing = editingId !== null;
+  const isEditingBuiltin = editingBuiltinId !== null;
 
   // Preview of the calculated notification time
   const formPreviewTime = computeCustomMedTime(time, scheduleMode, wakeUpTime, breakfastTime);
 
   function resetForm() {
     setEditingId(null);
+    setEditingBuiltinId(null);
     setName(""); setDosage(""); setTime("08:00"); setInstructions(""); setColor("blue"); setScheduleMode("fixed");
   }
 
@@ -162,12 +174,27 @@ export function MedsView({
 
   function openEditForm(med: CustomMedication) {
     setEditingId(med.id);
+    setEditingBuiltinId(null);
     setName(med.name);
     setDosage(med.dosage);
     setTime(med.time);
     setInstructions(med.instructions);
     setColor(med.color);
     setScheduleMode(med.scheduleMode ?? "fixed");
+    setShowForm(true);
+  }
+
+  function openEditBuiltinForm(med: Medication) {
+    const override = medOverrides[med.id] ?? {};
+    const computedTime = wakeUpTime ? addMinutes(wakeUpTime, med.wakeOffsetMin) : null;
+    setEditingBuiltinId(med.id);
+    setEditingId(null);
+    setName(override.name ?? med.name);
+    setDosage(override.dosage ?? med.dosage);
+    setTime(override.timeFixed ?? computedTime ?? med.timeLabel.split(" · ")[0]);
+    setInstructions(override.instructions ?? med.instructions);
+    setColor(override.color ?? med.color);
+    setScheduleMode("fixed");
     setShowForm(true);
   }
 
@@ -178,6 +205,18 @@ export function MedsView({
 
   const handleSave = () => {
     if (!canSave) return;
+    if (isEditingBuiltin) {
+      onUpdateBuiltinMed(editingBuiltinId!, {
+        name: name.trim(),
+        dosage: dosage.trim(),
+        instructions: instructions.trim(),
+        color,
+        timeFixed: time,
+      });
+      setSaved(true);
+      setTimeout(() => { setSaved(false); closeForm(); }, 800);
+      return;
+    }
     const payload = { name: name.trim(), dosage: dosage.trim(), time, instructions: instructions.trim(), color, scheduleMode };
     if (isEditing) {
       onEditCustomMed(editingId!, payload);
@@ -187,6 +226,14 @@ export function MedsView({
     }
     setSaved(true);
     setTimeout(() => { setSaved(false); closeForm(); }, 800);
+  };
+
+  const handleResetBuiltin = () => {
+    if (!editingBuiltinId) return;
+    if (window.confirm("¿Restaurar este medicamento a sus valores predeterminados?")) {
+      onResetBuiltinMed(editingBuiltinId);
+      closeForm();
+    }
   };
 
   return (
@@ -297,9 +344,24 @@ export function MedsView({
             className="overflow-hidden"
           >
             <div className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.08)]">
-              <p className="text-[15px] font-semibold text-[#1A1A2E] mb-4">
-                {isEditing ? `Editar — ${name || "medicamento"}` : "Nuevo medicamento"}
-              </p>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-[15px] font-semibold text-[#1A1A2E]">
+                  {isEditingBuiltin
+                    ? `Editar — ${name || "medicamento"}`
+                    : isEditing
+                    ? `Editar — ${name || "medicamento"}`
+                    : "Nuevo medicamento"}
+                </p>
+                {isEditingBuiltin && (
+                  <button
+                    onClick={handleResetBuiltin}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-[8px] text-[11px] font-semibold bg-[#F3F4F6] text-[#6B7280] active:scale-95 transition-transform"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Restaurar
+                  </button>
+                )}
+              </div>
 
               {/* Nombre + Dosis */}
               <div className="flex gap-3 mb-3">
@@ -325,8 +387,8 @@ export function MedsView({
                 </div>
               </div>
 
-              {/* Modo de programación */}
-              <div className="mb-3">
+              {/* Modo de programación — solo para meds personalizadas */}
+              {!isEditingBuiltin && <div className="mb-3">
                 <label className={labelCls}>¿Cuándo se toma?</label>
                 <div className="flex flex-col gap-2">
                   {[
@@ -352,12 +414,13 @@ export function MedsView({
                     </button>
                   ))}
                 </div>
-              </div>
+              </div>}
 
               {/* Horario base */}
               <div className="mb-3">
                 <label className={labelCls}>
-                  {scheduleMode === "fixed" ? "Hora de notificación *" :
+                  {isEditingBuiltin ? "Hora de notificación *" :
+                   scheduleMode === "fixed" ? "Hora de notificación *" :
                    scheduleMode === "wake_relative" ? "Hora base (relativa al despertar 08:00) *" :
                    "Hora base (relativa al desayuno 09:00) *"}
                 </label>
@@ -367,8 +430,16 @@ export function MedsView({
                   onChange={(e) => setTime(e.target.value)}
                   className={inputCls}
                 />
+                {isEditingBuiltin && (
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <Bell className="w-3 h-3 text-[#9CA3AF]" />
+                    <p className="text-[11px] text-[#9CA3AF]">
+                      La hora que ingreses reemplaza el cálculo automático según tu hora de despertar
+                    </p>
+                  </div>
+                )}
                 {/* Preview de hora calculada */}
-                {scheduleMode !== "fixed" && (
+                {!isEditingBuiltin && scheduleMode !== "fixed" && (
                   <div className="mt-1.5 flex items-center gap-1.5">
                     <Bell className="w-3 h-3 text-[#1B6B5B]" />
                     <p className="text-[11px] text-[#1B6B5B] font-medium">
@@ -466,16 +537,27 @@ export function MedsView({
       {/* ── Built-in medication cards ───────────────────────────────────── */}
       <div className="space-y-3">
         {medications.map((med, idx) => {
+          const override  = medOverrides[med.id] ?? {};
+          const hasOverride = Object.keys(override).length > 0;
+
+          // Merge overrides onto defaults
+          const displayName         = override.name         ?? med.name;
+          const displayDosage       = override.dosage       ?? med.dosage;
+          const displayInstructions = override.instructions ?? med.instructions;
+          const displayColor        = override.color        ?? med.color;
+
           const isUpcoming = !!med.startDate && todayISO < med.startDate;
           const isChecked  = !isUpcoming && (medsChecked[idx] || false);
-          const colors     = colorClasses[med.color] ?? colorClasses.blue;
+          const colors     = colorClasses[displayColor] ?? colorClasses.blue;
           const startLabel = med.startDate
             ? med.startDate.split("-").reverse().slice(0, 2).join("/")
             : null;
 
-          // Compute dynamic time label based on wake-up time
-          const computedTime  = wakeUpTime ? addMinutes(wakeUpTime, med.wakeOffsetMin) : null;
-          const displayLabel  = computedTime
+          // Time: fixed override wins, then wake-up computation, then fallback label
+          const computedTime = wakeUpTime ? addMinutes(wakeUpTime, med.wakeOffsetMin) : null;
+          const displayLabel = override.timeFixed
+            ? `${override.timeFixed} · Hora fija`
+            : computedTime
             ? `${computedTime} · ${med.timeContext}`
             : med.timeLabel;
 
@@ -491,11 +573,16 @@ export function MedsView({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <h3 className={`text-lg font-semibold ${isChecked ? "text-[#9CA3AF] line-through" : "text-[#1A1A2E]"}`}>
-                      {med.name}
+                      {displayName}
                     </h3>
                     <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[12px] font-semibold ${colors.badge} ${colors.badgeText}`}>
                       {displayLabel}
                     </span>
+                    {hasOverride && (
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#EDE9FE] text-[#8B5CF6]">
+                        editado
+                      </span>
+                    )}
                     {isUpcoming && (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#F3F4F6] text-[#9CA3AF]">
                         <Clock className="w-3 h-3" />
@@ -503,26 +590,36 @@ export function MedsView({
                       </span>
                     )}
                   </div>
-                  <p className="text-[15px] text-[#6B7280] mb-1">{med.dosage}</p>
-                  <p className="text-[13px] text-[#9CA3AF]">{med.instructions}</p>
+                  <p className="text-[15px] text-[#6B7280] mb-1">{displayDosage}</p>
+                  <p className="text-[13px] text-[#9CA3AF]">{displayInstructions}</p>
                 </div>
-                <button
-                  onClick={() => !isUpcoming && onToggleMed(idx)}
-                  disabled={isUpcoming}
-                  className={`flex-shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all duration-200 mt-1 ${
-                    isUpcoming
-                      ? "border-[#E5E7EB] bg-[#F9FAFB] cursor-not-allowed"
-                      : isChecked
-                      ? "bg-[#10B981] border-[#10B981]"
-                      : "border-[#D1D5DB] bg-transparent hover:border-[#9CA3AF]"
-                  }`}
-                >
-                  {isChecked && (
-                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
-                      <Check className="w-4 h-4 text-white" strokeWidth={3} />
-                    </motion.div>
-                  )}
-                </button>
+                <div className="flex flex-col items-center gap-2">
+                  {/* Edit button */}
+                  <button
+                    onClick={() => openEditBuiltinForm(med)}
+                    className="w-7 h-7 rounded-full bg-[#F3F4F6] flex items-center justify-center text-[#9CA3AF] active:scale-90 transition-transform"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  {/* Check button */}
+                  <button
+                    onClick={() => !isUpcoming && onToggleMed(idx)}
+                    disabled={isUpcoming}
+                    className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
+                      isUpcoming
+                        ? "border-[#E5E7EB] bg-[#F9FAFB] cursor-not-allowed"
+                        : isChecked
+                        ? "bg-[#10B981] border-[#10B981]"
+                        : "border-[#D1D5DB] bg-transparent hover:border-[#9CA3AF]"
+                    }`}
+                  >
+                    {isChecked && (
+                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 500, damping: 15 }}>
+                        <Check className="w-4 h-4 text-white" strokeWidth={3} />
+                      </motion.div>
+                    )}
+                  </button>
+                </div>
               </div>
             </motion.div>
           );

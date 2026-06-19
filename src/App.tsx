@@ -211,6 +211,9 @@ export default function App() {
                   onDeleteCustomMed={state.deleteCustomMed}
                   wakeUpTime={state.wakeUpTime}
                   breakfastTime={state.breakfastTime}
+                  medOverrides={state.medOverrides}
+                  onUpdateBuiltinMed={state.updateBuiltinMed}
+                  onResetBuiltinMed={state.resetBuiltinMed}
                 />
               </motion.div>
             )}
