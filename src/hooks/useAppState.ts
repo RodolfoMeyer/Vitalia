@@ -17,7 +17,7 @@ function getRotatingIndex(key: string, length: number): number {
   return parseInt(localStorage.getItem(key) ?? "0", 10);
 }
 
-export type MedScheduleMode = "fixed" | "wake_relative" | "breakfast_relative";
+export type MedScheduleMode = "fixed" | "wake_relative" | "breakfast_relative" | "lunch_relative" | "dinner_relative";
 
 export interface MedOverride {
   name?: string;
@@ -31,10 +31,11 @@ export interface CustomMedication {
   id: string;
   name: string;
   dosage: string;
-  time: string;              // HH:MM 24h base (interpreted per scheduleMode)
+  time: string;              // HH:MM 24h base/fallback
   instructions: string;
   color: "amber" | "teal" | "blue" | "purple";
   scheduleMode?: MedScheduleMode; // default "fixed" for legacy entries
+  delayMinutes?: number;    // for lunch/dinner_relative: minutes after the event
 }
 
 export interface FoodLogEntry {
@@ -494,6 +495,32 @@ export function useAppState() {
     setBreakfastTimeState(time);
   }, [todayISO]);
 
+  // ---- Lunch time (daily) ----
+  const [lunchTime, setLunchTimeState] = useState<string | null>(() => {
+    const storedDate = localStorage.getItem("vitalia_lunch_date");
+    if (storedDate === todayISO) return localStorage.getItem("vitalia_lunch_time");
+    return null;
+  });
+
+  const setLunchTime = useCallback((time: string) => {
+    localStorage.setItem("vitalia_lunch_time", time);
+    localStorage.setItem("vitalia_lunch_date", todayISO);
+    setLunchTimeState(time);
+  }, [todayISO]);
+
+  // ---- Dinner time (daily) ----
+  const [dinnerTime, setDinnerTimeState] = useState<string | null>(() => {
+    const storedDate = localStorage.getItem("vitalia_dinner_date");
+    if (storedDate === todayISO) return localStorage.getItem("vitalia_dinner_time");
+    return null;
+  });
+
+  const setDinnerTime = useCallback((time: string) => {
+    localStorage.setItem("vitalia_dinner_time", time);
+    localStorage.setItem("vitalia_dinner_date", todayISO);
+    setDinnerTimeState(time);
+  }, [todayISO]);
+
   // ---- Rotating content indexes (change each app open) ----
   const [tipIndex]      = useState(() => getRotatingIndex("vitalia_tip_idx",  wellnessTips.length));
   const [recIndex]      = useState(() => getRotatingIndex("vitalia_rec_idx",  medicalRecommendations.length));
@@ -590,6 +617,12 @@ export function useAppState() {
     // Breakfast
     breakfastTime,
     setBreakfastTime,
+    // Lunch
+    lunchTime,
+    setLunchTime,
+    // Dinner
+    dinnerTime,
+    setDinnerTime,
     // Rotating content
     tipIndex,
     recIndex,

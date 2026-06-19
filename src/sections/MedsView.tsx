@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Clock, Plus, Trash2, X, Save, AlarmClock, Bell, BellOff, RefreshCw, Coffee, Sunrise, Pencil } from "lucide-react";
+import { Check, Clock, Plus, Trash2, X, Save, AlarmClock, Bell, BellOff, RefreshCw, Coffee, Sunrise, Pencil, ForkKnife } from "lucide-react";
 import type { MedScheduleMode, MedOverride } from "@/hooks/useAppState";
 import { refreshPushSubscription } from "@/hooks/useNotifications";
 import { medications } from "@/data/menuData";
@@ -26,11 +26,31 @@ function computeCustomMedTime(
   mode: MedScheduleMode | undefined,
   wakeUpTime: string | null,
   breakfastTime: string | null,
+  lunchTime?: string | null,
+  dinnerTime?: string | null,
+  delayMinutes?: number,
 ): string {
   if (!mode || mode === "fixed") return baseTime;
+
+  // New event-based modes: anchor = event time + delayMinutes
+  if (mode === "lunch_relative") {
+    const anchor = lunchTime ?? "13:00";
+    return addMinutes(anchor, delayMinutes ?? 0);
+  }
+  if (mode === "dinner_relative") {
+    const anchor = dinnerTime ?? "20:30";
+    return addMinutes(anchor, delayMinutes ?? 0);
+  }
+
+  // Legacy offset modes (backward-compat): shift baseTime by diff from standard
   const wakeOffset = wakeUpTime ? toMins(wakeUpTime) - toMins("08:00") : 0;
-  if (mode === "wake_relative") return addMinutes(baseTime, wakeOffset);
+  if (mode === "wake_relative") {
+    // If delayMinutes specified: anchor at wakeUpTime + delay
+    if (delayMinutes !== undefined) return addMinutes(wakeUpTime ?? "08:00", delayMinutes);
+    return addMinutes(baseTime, wakeOffset);
+  }
   // breakfast_relative
+  if (delayMinutes !== undefined) return addMinutes(breakfastTime ?? "09:00", delayMinutes);
   const breakfastOffset = breakfastTime ? toMins(breakfastTime) - toMins("09:00") : 0;
   return addMinutes(baseTime, wakeOffset + breakfastOffset);
 }
@@ -91,6 +111,8 @@ interface MedsViewProps {
   onDeleteCustomMed: (id: string) => void;
   wakeUpTime: string | null;
   breakfastTime: string | null;
+  lunchTime: string | null;
+  dinnerTime: string | null;
   medCheckTimes: Record<string, string>;
   medOverrides: Record<string, MedOverride>;
   onUpdateBuiltinMed: (id: string, override: MedOverride) => void;
@@ -110,6 +132,8 @@ export function MedsView({
   onDeleteCustomMed,
   wakeUpTime,
   breakfastTime,
+  lunchTime,
+  dinnerTime,
   medCheckTimes,
   medOverrides,
   onUpdateBuiltinMed,
@@ -160,13 +184,16 @@ export function MedsView({
   const isEditing = editingId !== null;
   const isEditingBuiltin = editingBuiltinId !== null;
 
+  // delayMinutes form state
+  const [delayMinutes, setDelayMinutes] = useState<number>(0);
+
   // Preview of the calculated notification time
-  const formPreviewTime = computeCustomMedTime(time, scheduleMode, wakeUpTime, breakfastTime);
+  const formPreviewTime = computeCustomMedTime(time, scheduleMode, wakeUpTime, breakfastTime, lunchTime, dinnerTime, scheduleMode === "lunch_relative" || scheduleMode === "dinner_relative" ? delayMinutes : undefined);
 
   function resetForm() {
     setEditingId(null);
     setEditingBuiltinId(null);
-    setName(""); setDosage(""); setTime("08:00"); setInstructions(""); setColor("blue"); setScheduleMode("fixed");
+    setName(""); setDosage(""); setTime("08:00"); setInstructions(""); setColor("blue"); setScheduleMode("fixed"); setDelayMinutes(0);
   }
 
   function openNewForm() {
@@ -183,6 +210,7 @@ export function MedsView({
     setInstructions(med.instructions);
     setColor(med.color);
     setScheduleMode(med.scheduleMode ?? "fixed");
+    setDelayMinutes(med.delayMinutes ?? 0);
     setShowForm(true);
   }
 
@@ -219,7 +247,8 @@ export function MedsView({
       setTimeout(() => { setSaved(false); closeForm(); }, 800);
       return;
     }
-    const payload = { name: name.trim(), dosage: dosage.trim(), time, instructions: instructions.trim(), color, scheduleMode };
+    const usesDelay = scheduleMode === "lunch_relative" || scheduleMode === "dinner_relative";
+    const payload = { name: name.trim(), dosage: dosage.trim(), time, instructions: instructions.trim(), color, scheduleMode, ...(usesDelay ? { delayMinutes } : {}) };
     if (isEditing) {
       onEditCustomMed(editingId!, payload);
     } else {
@@ -394,9 +423,11 @@ export function MedsView({
                 <label className={labelCls}>¿Cuándo se toma?</label>
                 <div className="flex flex-col gap-2">
                   {[
-                    { mode: "fixed" as MedScheduleMode, icon: <Clock className="w-4 h-4" />, label: "Hora fija", desc: "Siempre a la misma hora" },
-                    { mode: "wake_relative" as MedScheduleMode, icon: <Sunrise className="w-4 h-4" />, label: "Relativo al despertar", desc: "Se ajusta según tu hora de despertar" },
-                    { mode: "breakfast_relative" as MedScheduleMode, icon: <Coffee className="w-4 h-4" />, label: "Con/después del desayuno", desc: "Se ajusta según tu hora de desayuno" },
+                    { mode: "fixed" as MedScheduleMode,             icon: <Clock className="w-4 h-4" />,   label: "Hora fija",                desc: "Siempre a la misma hora" },
+                    { mode: "wake_relative" as MedScheduleMode,     icon: <Sunrise className="w-4 h-4" />, label: "Tras el despertar",        desc: "Se ajusta a tu hora de despertar" },
+                    { mode: "breakfast_relative" as MedScheduleMode, icon: <Coffee className="w-4 h-4" />,  label: "Tras el desayuno",         desc: "Se ajusta a tu hora de desayuno" },
+                    { mode: "lunch_relative" as MedScheduleMode,    icon: <ForkKnife className="w-4 h-4" />, label: "Tras el almuerzo",       desc: "Se calcula desde tu hora de almuerzo" },
+                    { mode: "dinner_relative" as MedScheduleMode,   icon: <ForkKnife className="w-4 h-4" />, label: "Tras la cena",           desc: "Se calcula desde tu hora de cena" },
                   ].map(({ mode, icon, label, desc }) => (
                     <button
                       key={mode}
@@ -418,8 +449,39 @@ export function MedsView({
                 </div>
               </div>}
 
-              {/* Horario base */}
-              <div className="mb-3">
+              {/* Delay en minutos (solo modos lunch/dinner) */}
+              {(scheduleMode === "lunch_relative" || scheduleMode === "dinner_relative") && !isEditingBuiltin && (
+                <div className="mb-3">
+                  <label className={labelCls}>¿Cuántos minutos después de la {scheduleMode === "lunch_relative" ? "comida" : "cena"}? *</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={0}
+                      max={480}
+                      value={delayMinutes}
+                      onChange={(e) => setDelayMinutes(Math.max(0, parseInt(e.target.value) || 0))}
+                      className={inputCls + " w-28 text-center text-[18px] font-bold"}
+                    />
+                    <span className="text-[13px] text-[#6B7280]">minutos</span>
+                    {delayMinutes > 0 && (
+                      <span className="text-[12px] text-[#1B6B5B] font-medium">
+                        = {Math.floor(delayMinutes / 60)}h {delayMinutes % 60}min
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <Bell className="w-3 h-3 text-[#1B6B5B]" />
+                    <p className="text-[11px] text-[#1B6B5B] font-medium">
+                      Notificación hoy a las <strong>{formPreviewTime}</strong>
+                      {scheduleMode === "lunch_relative" && !lunchTime && " (registra almuerzo para ver hora exacta)"}
+                      {scheduleMode === "dinner_relative" && !dinnerTime && " (registra cena para ver hora exacta)"}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Horario base (no se muestra para lunch/dinner_relative que usan delay) */}
+              {scheduleMode !== "lunch_relative" && scheduleMode !== "dinner_relative" && <div className="mb-3">
                 <label className={labelCls}>
                   {isEditingBuiltin ? "Hora de notificación *" :
                    scheduleMode === "fixed" ? "Hora de notificación *" :
@@ -451,7 +513,7 @@ export function MedsView({
                     </p>
                   </div>
                 )}
-              </div>
+              </div>}
 
               {/* Instrucciones */}
               <div className="mb-4">
@@ -659,12 +721,14 @@ export function MedsView({
           {customMeds.map((med) => {
             const isChecked   = customMedsChecked[med.id] || false;
             const colors      = colorClasses[med.color] ?? colorClasses.blue;
-            const realTime    = computeCustomMedTime(med.time, med.scheduleMode, wakeUpTime, breakfastTime);
+            const realTime    = computeCustomMedTime(med.time, med.scheduleMode, wakeUpTime, breakfastTime, lunchTime, dinnerTime, med.delayMinutes);
             const [hh]        = realTime.split(":");
             const h           = parseInt(hh, 10);
             const period      = h < 12 ? "Mañana" : h < 17 ? "Tarde" : "Noche";
-            const modeLabel   = med.scheduleMode === "wake_relative" ? " · relativo al despertar"
+            const modeLabel   = med.scheduleMode === "wake_relative" ? " · rel. despertar"
                               : med.scheduleMode === "breakfast_relative" ? " · post-desayuno"
+                              : med.scheduleMode === "lunch_relative" ? " · post-almuerzo"
+                              : med.scheduleMode === "dinner_relative" ? " · post-cena"
                               : "";
             const timeLabel   = `${realTime}${modeLabel} · ${period}`;
 

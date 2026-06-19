@@ -178,6 +178,10 @@ interface HomeViewProps {
   onSetWakeUpTime: (time: string) => void;
   breakfastTime: string | null;
   onSetBreakfastTime: (time: string) => void;
+  lunchTime: string | null;
+  onSetLunchTime: (time: string) => void;
+  dinnerTime: string | null;
+  onSetDinnerTime: (time: string) => void;
 }
 
 export function HomeView({
@@ -195,6 +199,10 @@ export function HomeView({
   onSetWakeUpTime,
   breakfastTime,
   onSetBreakfastTime,
+  lunchTime,
+  onSetLunchTime,
+  dinnerTime,
+  onSetDinnerTime,
 }: HomeViewProps) {
   const progressPercent = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
@@ -234,6 +242,18 @@ export function HomeView({
   const [isEditingBreakfast, setIsEditingBreakfast] = useState(false);
   const [editBreakfast, setEditBreakfast] = useState("09:00");
 
+  // Lunch manual registration state
+  const [showLunchForm, setShowLunchForm] = useState(false);
+  const [selectedLunch, setSelectedLunch] = useState("13:00");
+  const [isEditingLunch, setIsEditingLunch] = useState(false);
+  const [editLunch, setEditLunch] = useState("13:00");
+
+  // Dinner manual registration state
+  const [showDinnerForm, setShowDinnerForm] = useState(false);
+  const [selectedDinner, setSelectedDinner] = useState("20:30");
+  const [isEditingDinner, setIsEditingDinner] = useState(false);
+  const [editDinner, setEditDinner] = useState("20:30");
+
   // Capture current time only when the user taps "Registrar"
   function openWakeUpForm() {
     const now = new Date();
@@ -246,6 +266,18 @@ export function HomeView({
   function openBreakfastForm() {
     setSelectedBreakfast(breakfastTime || "09:00");
     setShowBreakfastForm(true);
+  }
+
+  function handleSetLunch(time: string) {
+    onSetLunchTime(time);
+    setShowLunchForm(false);
+    setIsEditingLunch(false);
+  }
+
+  function handleSetDinner(time: string) {
+    onSetDinnerTime(time);
+    setShowDinnerForm(false);
+    setIsEditingDinner(false);
   }
 
   async function handleSetBreakfast(time: string) {
@@ -598,6 +630,140 @@ export function HomeView({
               >
                 <Check className="w-4 h-4" />
                 Guardar
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Lunch registration ─────────────────────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {!lunchTime && !showLunchForm && (
+          <motion.div key="lunch-btn" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+            <button
+              onClick={() => { setSelectedLunch("13:00"); setShowLunchForm(true); }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-[16px] border-2 border-dashed border-[#D1FAE5] bg-[#F0FDF9] text-[#1B6B5B] active:scale-[0.98] transition-transform"
+            >
+              <ForkKnife className="w-4 h-4 flex-shrink-0" />
+              <span className="text-[13px] font-medium">Registrar hora de almuerzo</span>
+            </button>
+          </motion.div>
+        )}
+        {!lunchTime && showLunchForm && (
+          <motion.div key="lunch-form" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}
+            className="rounded-[18px] p-4 shadow-[0_4px_20px_rgba(27,107,91,0.15)]"
+            style={{ background: "linear-gradient(135deg, #1B6B5B 0%, #2D8B7A 100%)" }}
+          >
+            <p className="text-white/80 text-[13px] font-medium mb-3">¿A qué hora almorzaste?</p>
+            <div className="bg-white/15 rounded-[12px] px-4 py-3 mb-3 flex items-center gap-3">
+              <ForkKnife className="w-4 h-4 text-white/70 flex-shrink-0" />
+              <input type="time" value={selectedLunch} onChange={(e) => setSelectedLunch(e.target.value)}
+                className="flex-1 bg-transparent text-white text-[22px] font-semibold tracking-wider focus:outline-none" style={{ colorScheme: "dark" }} />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setShowLunchForm(false)} className="flex-1 py-2.5 rounded-[10px] bg-white/20 text-white text-[14px] font-semibold active:scale-[0.98] transition-transform">Cancelar</button>
+              <button onClick={() => handleSetLunch(selectedLunch)} className="flex-1 py-2.5 rounded-[10px] bg-white flex items-center justify-center gap-2 text-[15px] font-semibold text-[#1B6B5B] active:scale-[0.98] transition-transform">
+                <Check className="w-4 h-4" /> Confirmar
+              </button>
+            </div>
+          </motion.div>
+        )}
+        {lunchTime && !isEditingLunch && (
+          <motion.div key="lunch-done" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.2 }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#E8F5F0] rounded-[14px]"
+          >
+            <ForkKnife className="w-4 h-4 text-[#1B6B5B] flex-shrink-0" />
+            <p className="text-[13px] font-medium text-[#1B6B5B] flex-1">
+              Almuerzo a las <strong>{formatTime12(lunchTime)}</strong> — recordatorios ajustados
+            </p>
+            <button onClick={() => { setEditLunch(lunchTime); setIsEditingLunch(true); }}
+              className="flex-shrink-0 flex items-center gap-1 text-[12px] font-semibold text-[#1B6B5B]/70 bg-white/70 px-2.5 py-1 rounded-full active:scale-95 transition-transform">
+              <Pencil className="w-3 h-3" /> Editar
+            </button>
+          </motion.div>
+        )}
+        {lunchTime && isEditingLunch && (
+          <motion.div key="lunch-edit" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}
+            className="rounded-[18px] p-4 shadow-[0_4px_20px_rgba(27,107,91,0.15)]"
+            style={{ background: "linear-gradient(135deg, #1B6B5B 0%, #2D8B7A 100%)" }}
+          >
+            <p className="text-white/80 text-[13px] font-medium mb-3">Corregir hora de almuerzo</p>
+            <div className="bg-white/15 rounded-[12px] px-4 py-3 mb-3 flex items-center gap-3">
+              <ForkKnife className="w-4 h-4 text-white/70 flex-shrink-0" />
+              <input type="time" value={editLunch} onChange={(e) => setEditLunch(e.target.value)}
+                className="flex-1 bg-transparent text-white text-[22px] font-semibold tracking-wider focus:outline-none" style={{ colorScheme: "dark" }} />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setIsEditingLunch(false)} className="flex-1 py-2.5 rounded-[10px] bg-white/20 text-white text-[14px] font-semibold active:scale-[0.98] transition-transform">Cancelar</button>
+              <button onClick={() => { handleSetLunch(editLunch); }} className="flex-1 py-2.5 rounded-[10px] bg-white flex items-center justify-center gap-1.5 text-[14px] font-semibold text-[#1B6B5B] active:scale-[0.98] transition-transform">
+                <Check className="w-4 h-4" /> Guardar
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Dinner registration ─────────────────────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {!dinnerTime && !showDinnerForm && (
+          <motion.div key="dinner-btn" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+            <button
+              onClick={() => { setSelectedDinner("20:30"); setShowDinnerForm(true); }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-[16px] border-2 border-dashed border-[#E9D5FF] bg-[#FAF5FF] text-[#8B5CF6] active:scale-[0.98] transition-transform"
+            >
+              <ForkKnife className="w-4 h-4 flex-shrink-0" />
+              <span className="text-[13px] font-medium">Registrar hora de cena</span>
+            </button>
+          </motion.div>
+        )}
+        {!dinnerTime && showDinnerForm && (
+          <motion.div key="dinner-form" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}
+            className="rounded-[18px] p-4 shadow-[0_4px_20px_rgba(139,92,246,0.15)]"
+            style={{ background: "linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%)" }}
+          >
+            <p className="text-white/80 text-[13px] font-medium mb-3">¿A qué hora cenaste?</p>
+            <div className="bg-white/15 rounded-[12px] px-4 py-3 mb-3 flex items-center gap-3">
+              <ForkKnife className="w-4 h-4 text-white/70 flex-shrink-0" />
+              <input type="time" value={selectedDinner} onChange={(e) => setSelectedDinner(e.target.value)}
+                className="flex-1 bg-transparent text-white text-[22px] font-semibold tracking-wider focus:outline-none" style={{ colorScheme: "dark" }} />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setShowDinnerForm(false)} className="flex-1 py-2.5 rounded-[10px] bg-white/20 text-white text-[14px] font-semibold active:scale-[0.98] transition-transform">Cancelar</button>
+              <button onClick={() => handleSetDinner(selectedDinner)} className="flex-1 py-2.5 rounded-[10px] bg-white flex items-center justify-center gap-2 text-[15px] font-semibold text-[#7C3AED] active:scale-[0.98] transition-transform">
+                <Check className="w-4 h-4" /> Confirmar
+              </button>
+            </div>
+          </motion.div>
+        )}
+        {dinnerTime && !isEditingDinner && (
+          <motion.div key="dinner-done" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.2 }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#EDE9FE] rounded-[14px]"
+          >
+            <ForkKnife className="w-4 h-4 text-[#7C3AED] flex-shrink-0" />
+            <p className="text-[13px] font-medium text-[#7C3AED] flex-1">
+              Cena a las <strong>{formatTime12(dinnerTime)}</strong> — recordatorios ajustados
+            </p>
+            <button onClick={() => { setEditDinner(dinnerTime); setIsEditingDinner(true); }}
+              className="flex-shrink-0 flex items-center gap-1 text-[12px] font-semibold text-[#7C3AED]/70 bg-white/70 px-2.5 py-1 rounded-full active:scale-95 transition-transform">
+              <Pencil className="w-3 h-3" /> Editar
+            </button>
+          </motion.div>
+        )}
+        {dinnerTime && isEditingDinner && (
+          <motion.div key="dinner-edit" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}
+            className="rounded-[18px] p-4 shadow-[0_4px_20px_rgba(139,92,246,0.15)]"
+            style={{ background: "linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%)" }}
+          >
+            <p className="text-white/80 text-[13px] font-medium mb-3">Corregir hora de cena</p>
+            <div className="bg-white/15 rounded-[12px] px-4 py-3 mb-3 flex items-center gap-3">
+              <ForkKnife className="w-4 h-4 text-white/70 flex-shrink-0" />
+              <input type="time" value={editDinner} onChange={(e) => setEditDinner(e.target.value)}
+                className="flex-1 bg-transparent text-white text-[22px] font-semibold tracking-wider focus:outline-none" style={{ colorScheme: "dark" }} />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setIsEditingDinner(false)} className="flex-1 py-2.5 rounded-[10px] bg-white/20 text-white text-[14px] font-semibold active:scale-[0.98] transition-transform">Cancelar</button>
+              <button onClick={() => { handleSetDinner(editDinner); }} className="flex-1 py-2.5 rounded-[10px] bg-white flex items-center justify-center gap-1.5 text-[14px] font-semibold text-[#7C3AED] active:scale-[0.98] transition-transform">
+                <Check className="w-4 h-4" /> Guardar
               </button>
             </div>
           </motion.div>

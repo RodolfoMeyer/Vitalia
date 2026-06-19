@@ -140,6 +140,10 @@ export default function App() {
                   onSetWakeUpTime={state.setWakeUpTime}
                   breakfastTime={state.breakfastTime}
                   onSetBreakfastTime={state.setBreakfastTime}
+                  lunchTime={state.lunchTime}
+                  onSetLunchTime={state.setLunchTime}
+                  dinnerTime={state.dinnerTime}
+                  onSetDinnerTime={state.setDinnerTime}
                 />
               </motion.div>
             )}
@@ -211,6 +215,8 @@ export default function App() {
                   onDeleteCustomMed={state.deleteCustomMed}
                   wakeUpTime={state.wakeUpTime}
                   breakfastTime={state.breakfastTime}
+                  lunchTime={state.lunchTime}
+                  dinnerTime={state.dinnerTime}
                   medCheckTimes={state.medCheckTimes}
                   medOverrides={state.medOverrides}
                   onUpdateBuiltinMed={state.updateBuiltinMed}
