@@ -20,14 +20,27 @@ import {
 
 /* ── Backup helpers ──────────────────────────────────────────────────────── */
 const BACKUP_KEYS = [
+  // Evolución corporal
   "vitalia_evolution",
+  "vitalia_weight_goal",
+  // Agua
   "vitalia_water_count", "vitalia_water_date", "vitalia_water_history",
+  // Medicamentos predeterminados
   "vitalia_meds_checked", "vitalia_meds_date", "vitalia_meds_history",
+  "vitalia_med_overrides",
+  // Medicamentos personalizados
   "vitalia_custom_meds", "vitalia_custom_meds_checked", "vitalia_custom_meds_date",
+  // Menú semanal personalizado
   "vitalia_menu_checked", "vitalia_menu_date", "vitalia_food_log",
+  "vitalia_custom_week_menu",
+  "vitalia_custom_thyroid_menu",
+  "vitalia_custom_thyroid_notes",
+  // Horarios de comidas (diarios)
   "vitalia_wakeup_time", "vitalia_wakeup_date",
   "vitalia_breakfast_time", "vitalia_breakfast_date",
-  "vitalia_weight_goal",
+  "vitalia_lunch_time", "vitalia_lunch_date",
+  "vitalia_dinner_time", "vitalia_dinner_date",
+  // Contenido rotativo
   "vitalia_tip_idx", "vitalia_rec_idx", "vitalia_extip_idx",
 ];
 const LAST_BACKUP_KEY = "vitalia_last_backup";
