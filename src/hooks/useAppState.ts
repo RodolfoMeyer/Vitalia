@@ -204,6 +204,14 @@ export function useAppState() {
     });
   }, []);
 
+  const editCustomMed = useCallback((id: string, updated: Omit<CustomMedication, "id">) => {
+    setCustomMeds((prev) => {
+      const next = prev.map((m) => m.id === id ? { ...updated, id } : m);
+      saveJSON("vitalia_custom_meds", next);
+      return next;
+    });
+  }, []);
+
   const deleteCustomMed = useCallback((id: string) => {
     setCustomMeds((prev) => {
       const next = prev.filter((m) => m.id !== id);
@@ -393,6 +401,7 @@ export function useAppState() {
     customMeds,
     customMedsChecked,
     addCustomMed,
+    editCustomMed,
     deleteCustomMed,
     toggleCustomMed,
     // Evolution

@@ -197,6 +197,7 @@ export default function App() {
                   customMedsChecked={state.customMedsChecked}
                   onToggleCustomMed={state.toggleCustomMed}
                   onAddCustomMed={state.addCustomMed}
+                  onEditCustomMed={state.editCustomMed}
                   onDeleteCustomMed={state.deleteCustomMed}
                   wakeUpTime={state.wakeUpTime}
                   breakfastTime={state.breakfastTime}

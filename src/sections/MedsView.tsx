@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Clock, Plus, Trash2, X, Save, AlarmClock, Bell, BellOff, RefreshCw, Coffee, Sunrise } from "lucide-react";
+import { Check, Clock, Plus, Trash2, X, Save, AlarmClock, Bell, BellOff, RefreshCw, Coffee, Sunrise, Pencil } from "lucide-react";
 import type { MedScheduleMode } from "@/hooks/useAppState";
 import { refreshPushSubscription } from "@/hooks/useNotifications";
 import { medications } from "@/data/menuData";
@@ -86,6 +86,7 @@ interface MedsViewProps {
   customMedsChecked: Record<string, boolean>;
   onToggleCustomMed: (id: string) => void;
   onAddCustomMed: (med: CustomMedication) => void;
+  onEditCustomMed: (id: string, updated: Omit<CustomMedication, "id">) => void;
   onDeleteCustomMed: (id: string) => void;
   wakeUpTime: string | null;
   breakfastTime: string | null;
@@ -100,6 +101,7 @@ export function MedsView({
   customMedsChecked,
   onToggleCustomMed,
   onAddCustomMed,
+  onEditCustomMed,
   onDeleteCustomMed,
   wakeUpTime,
   breakfastTime,
@@ -131,8 +133,9 @@ export function MedsView({
     setTimeout(() => setRefreshResult(null), 4000);
   };
 
-  // ── Add-med form state ──────────────────────────────────────────────────
+  // ── Form state (shared for add & edit) ─────────────────────────────────
   const [showForm,      setShowForm]      = useState(false);
+  const [editingId,     setEditingId]     = useState<string | null>(null); // null = adding new
   const [name,          setName]          = useState("");
   const [dosage,        setDosage]        = useState("");
   const [time,          setTime]          = useState("08:00");
@@ -142,20 +145,48 @@ export function MedsView({
   const [saved,         setSaved]         = useState(false);
 
   const canSave = name.trim().length > 0 && dosage.trim().length > 0 && time.length > 0;
+  const isEditing = editingId !== null;
 
-  // Preview of the calculated notification time for this form's current settings
+  // Preview of the calculated notification time
   const formPreviewTime = computeCustomMedTime(time, scheduleMode, wakeUpTime, breakfastTime);
+
+  function resetForm() {
+    setEditingId(null);
+    setName(""); setDosage(""); setTime("08:00"); setInstructions(""); setColor("blue"); setScheduleMode("fixed");
+  }
+
+  function openNewForm() {
+    resetForm();
+    setShowForm(true);
+  }
+
+  function openEditForm(med: CustomMedication) {
+    setEditingId(med.id);
+    setName(med.name);
+    setDosage(med.dosage);
+    setTime(med.time);
+    setInstructions(med.instructions);
+    setColor(med.color);
+    setScheduleMode(med.scheduleMode ?? "fixed");
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    resetForm();
+  }
 
   const handleSave = () => {
     if (!canSave) return;
-    const id = `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    onAddCustomMed({ id, name: name.trim(), dosage: dosage.trim(), time, instructions: instructions.trim(), color, scheduleMode });
+    const payload = { name: name.trim(), dosage: dosage.trim(), time, instructions: instructions.trim(), color, scheduleMode };
+    if (isEditing) {
+      onEditCustomMed(editingId!, payload);
+    } else {
+      const id = `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      onAddCustomMed({ id, ...payload });
+    }
     setSaved(true);
-    setTimeout(() => {
-      setSaved(false);
-      setShowForm(false);
-      setName(""); setDosage(""); setTime("08:00"); setInstructions(""); setColor("blue"); setScheduleMode("fixed");
-    }, 1000);
+    setTimeout(() => { setSaved(false); closeForm(); }, 800);
   };
 
   return (
@@ -169,7 +200,7 @@ export function MedsView({
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-2xl font-bold text-[#1A1A2E]">Medicamentos</h2>
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => showForm ? closeForm() : openNewForm()}
           className={`w-9 h-9 rounded-full flex items-center justify-center shadow-sm transition-all duration-200 ${
             showForm
               ? "bg-[#FEE8E8] text-[#E53E3E]"
@@ -266,7 +297,9 @@ export function MedsView({
             className="overflow-hidden"
           >
             <div className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.08)]">
-              <p className="text-[15px] font-semibold text-[#1A1A2E] mb-4">Nuevo medicamento</p>
+              <p className="text-[15px] font-semibold text-[#1A1A2E] mb-4">
+                {isEditing ? `Editar — ${name || "medicamento"}` : "Nuevo medicamento"}
+              </p>
 
               {/* Nombre + Dosis */}
               <div className="flex gap-3 mb-3">
@@ -393,7 +426,7 @@ export function MedsView({
                 ) : (
                   <>
                     <Save className="w-4 h-4" />
-                    Agregar medicamento
+                    {isEditing ? "Guardar cambios" : "Agregar medicamento"}
                   </>
                 )}
               </button>
@@ -537,6 +570,13 @@ export function MedsView({
                   </div>
 
                   <div className="flex items-center gap-2 flex-shrink-0 mt-1">
+                    {/* Edit */}
+                    <button
+                      onClick={() => openEditForm(med)}
+                      className="w-7 h-7 rounded-full bg-[#E8F2FA] flex items-center justify-center"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-[#3B9DD8]" />
+                    </button>
                     {/* Delete */}
                     <button
                       onClick={() => {
